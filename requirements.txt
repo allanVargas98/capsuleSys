@@ -1,0 +1,6 @@
+streamlit
+supabase
+pandas
+google-genai
+reportlab
+matplotlib
