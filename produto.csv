@@ -1,0 +1,34 @@
+Codigo,Descrição Produto,ean_produto,Preço Produto,Categoria,Sub-Categoria,Quantidade Produto,Filial
+1,Desinfetante Pinho 1L,7891234560012,4.99,Consumo,Produtos de limpeza,10,Olimpo
+2,Água Sanitária 1L,7891234560013,3.99,Consumo,Produtos de limpeza,15,Zeus
+3,Detergente Neutro 500ml,7891234560014,2.49,Consumo,Produtos de limpeza,20,Olimpo
+4,Esponja Multiuso,7891234560015,1.99,Consumo,Produtos de limpeza,50,Zeus
+5,Papel Higiênico 12 rolos,7891234560016,12.90,Consumo,Higiene,30,Olimpo
+6,Shampoo Neutro 350ml,7891234560017,9.50,Consumo,Higiene,25,Zeus
+7,Condicionador Neutro 350ml,7891234560018,9.90,Consumo,Higiene,25,Olimpo
+8,Creme Dental 90g,7891234560019,3.50,Consumo,Higiene,40,Zeus
+9,Arroz Branco 5kg,7891234560020,25.00,Alimentos,Cereais,60,Olimpo
+10,Feijão Carioca 1kg,7891234560021,7.50,Alimentos,Cereais,45,Zeus
+11,Açúcar Refinado 1kg,7891234560022,4.20,Alimentos,Cereais,70,Olimpo
+12,Café Torrado 500g,7891234560023,15.00,Alimentos,Bebidas,35,Zeus
+13,Leite Integral 1L,7891234560024,5.50,Alimentos,Bebidas,80,Olimpo
+14,Óleo de Soja 900ml,7891234560025,8.90,Alimentos,Culinária,50,Zeus
+15,Macarrão Espaguete 500g,7891234560026,6.20,Alimentos,Culinária,40,Olimpo
+16,Molho de Tomate 340g,7891234560027,4.80,Alimentos,Culinária,30,Zeus
+17,Biscoito Cream Cracker 400g,7891234560028,7.00,Alimentos,Snacks,25,Olimpo
+18,Refrigerante Cola 2L,7891234560029,9.50,Alimentos,Bebidas,60,Zeus
+19,Suco de Laranja 1L,7891234560030,6.90,Alimentos,Bebidas,40,Olimpo
+20,Água Mineral 1.5L,7891234560031,3.20,Alimentos,Bebidas,100,Zeus
+21,Tijolo Cerâmica,7891234560032,0.80,Construção,Material Básico,500,Olimpo
+22,Cimento 50kg,7891234560033,35.00,Construção,Material Básico,200,Zeus
+23,Areia Lavada 1m³,7891234560034,70.00,Construção,Material Básico,30,Olimpo
+24,Cal Hidratada 20kg,7891234560035,25.00,Construção,Material Básico,40,Zeus
+25,Tinta Acrílica 18L,7891234560036,250.00,Construção,Acabamento,15,Olimpo
+26,Parafuso 5cm,7891234560037,0.15,Construção,Ferragens,1000,Zeus
+27,Lâmpada LED 9W,7891234560038,12.00,Construção,Elétrica,120,Olimpo
+28,Fio Elétrico 2.5mm 100m,7891234560039,180.00,Construção,Elétrica,20,Zeus
+29,Tomada 10A,7891234560040,8.50,Construção,Elétrica,60,Olimpo
+30,Interruptor Simples,7891234560041,9.00,Construção,Elétrica,55,Zeus
+
+31,Cola PU,7891515989408,29.98,Ferragem,Fixadores,0,Olimpo
+31,Cola PU,7891515989408,29.98,Ferragem,Fixadores,0,Zeus

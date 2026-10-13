@@ -1,0 +1,22 @@
+==========================================
+            DOCERIA & CAFÉ BEROLA         
+         FRANQUIA TAQUARA - RS            
+==========================================
+Data/Hora: 27/06/2026 19:54:09
+Operador: admin
+------------------------------------------
+PROD  | DESC          | QTD | UN   | TOTAL
+------------------------------------------
+001   Camafeu de Noz  01   8.50  8.50
+------------------------------------------
+VALOR TOTAL:               R$ 8.50
+FORMA PAGTO:               Dinheiro
+VALOR PAGO:                R$ 8.50
+TROCO:                     R$ 0.00
+==========================================
+        OBRIGADO PELA PREFERENCIA!        
+        CAPSULESYS AUTOMACAO RESIDENTE    
+==========================================
+
+
+

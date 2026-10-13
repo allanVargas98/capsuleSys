@@ -1,0 +1,9 @@
+Produto,Fornecedor,Preço Cotado,Selecionado,NumeroPedido
+Café Torrado 500g,Supermercados G,29.99,True,1
+Desinfetante Pinho 1L,Supermercados G,5.99,True,1
+Papel Higiênico 12 rolos,Supermercados G,12.99,True,1
+Água Sanitária 1L,Supermercados G,4.89,True,1
+Cola PU,terceiro teste fornecedor,28.99,True,2
+Cola PU,Supermercados a,27.96,True,3
+Esponja Multiuso,primeiro teste Fornecedor,2.0,True,4
+Água Sanitária 1L,segundo teste fornecedor,3.79,True,4

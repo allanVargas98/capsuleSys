@@ -1,0 +1,4 @@
+NF,Fornecedor,Valor,Vencimento,QTD Faturas,Status
+1,Supermercados G,1.5,2026-02-13,1,Pago
+2,Supermercados G,156.15,2026-02-09,1,Pago
+226,primeiro teste Fornecedor,374.15,2026-02-18,2,Pago
