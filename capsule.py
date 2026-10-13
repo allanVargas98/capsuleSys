@@ -11,17 +11,23 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas
+from supabase import create_client, Client
 
-
+# Configuração do Supabase
+SUPABASE_URL = "https://capsulesys.supabase.co"
+SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"  
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 client = genai.Client(api_key="AIzaSyD4T5kcEqx6d-SDTmugPQAC_LfSvlD7IX0")  
 modelo = "models/gemini-3-flash-preview"  # modelo utilizado para o chatbot
 
 # Função para converter arquivo em base64
 def get_base64_of_bin_file(file_path):
-    with open(file_path, "rb") as f:
-        data = f.read()
-    return base64.b64encode(data).decode("utf-8")
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return base64.b64encode(data).decode("utf-8")
+    return ""
 
 img_path = "capsuleSys.png"
 img_base64 = get_base64_of_bin_file(img_path)
@@ -55,21 +61,27 @@ def tela_login():
     senha = st.text_input("Senha", type="password")
 
     if st.button("Entrar"):
-        if os.path.exists("usuarios.csv"):
-            df_usuarios = pd.read_csv("usuarios.csv")
-            if ((df_usuarios["Usuario"] == usuario) & (df_usuarios["Senha"] == senha)).any():
-                st.success("Login realizado com sucesso!")
-                st.session_state["logado"] = True
-                st.session_state["usuario"] = usuario  # guarda quem entrou
-            else:
-                st.error("Usuário ou senha inválidos.")
+        # Login padrão de Administrador Master
+        if usuario == "admin" and senha == "1234":
+            st.success("Login realizado com sucesso!")
+            st.session_state["logado"] = True
+            st.session_state["usuario"] = usuario
+            st.rerun()
         else:
-            if usuario == "admin" and senha == "1234":
-                st.success("Login realizado com sucesso!")
-                st.session_state["logado"] = True
-                st.session_state["usuario"] = usuario
-            else:
-                st.error("Usuário ou senha inválidos.")
+            try:
+                # Busca o usuário no Supabase
+                response = supabase.table("usuarios").select("*").eq("Usuario", usuario).eq("Senha", senha).execute()
+                dados_usuarios = response.data
+
+                if dados_usuarios and len(dados_usuarios) > 0:
+                    st.success("Login realizado com sucesso!")
+                    st.session_state["logado"] = True
+                    st.session_state["usuario"] = usuario
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha inválidos.")
+            except Exception as e:
+                st.error(f"Erro ao conectar com o banco de dados: {e}")
 
 # Inicializa o estado se ainda não existir
 if "logado" not in st.session_state:
@@ -83,34 +95,55 @@ else:
 
     match menu:
         case "Gráficos Gerenciais":
+            try:
+                df_caixa = pd.DataFrame(supabase.table("fluxo_caixa").select("*").execute().data)
+                if not df_caixa.empty and "Valor" in df_caixa.columns:
+                    df_caixa["Valor"] = pd.to_numeric(df_caixa["Valor"])
+                    total_caixa = df_caixa["Valor"].sum()
+                    st.metric(label="Fluxo de Caixa", value=f"R$ {total_caixa:,.2f}") 
+                else:
+                    st.metric(label="Fluxo de Caixa", value="R$ 0,00")
+            except Exception:
+                st.metric(label="Fluxo de Caixa", value="R$ 0,00")
 
-            df_caixa = pd.read_csv("fluxo_caixa.csv")
-            df_caixa["Valor"] = pd.to_numeric(df_caixa["Valor"])
-            total_caixa = df_caixa["Valor"].sum()
-            st.metric(label="Fluxo de Caixa", value=f"R$ {total_caixa:,.2f}") 
-
-            df_contasp = pd.read_csv("contas_a_pagar.csv")
-            df_contasp["Valor"] = pd.to_numeric(df_contasp["Valor"])
-            df_abertas = df_contasp[df_contasp["Status"] == "Aberto"]
-            total_contasp = df_abertas["Valor"].sum()
-            st.metric(label="Contas a Pagar (Abertas)", value=f"R$ {total_contasp:,.2f}")
-            st.bar_chart(df_abertas.groupby("Fornecedor")["Valor"].sum())
+            try:
+                df_contasp = pd.DataFrame(supabase.table("contas_a_pagar").select("*").execute().data)
+                if not df_contasp.empty and "Valor" in df_contasp.columns and "Status" in df_contasp.columns:
+                    df_contasp["Valor"] = pd.to_numeric(df_contasp["Valor"])
+                    df_abertas = df_contasp[df_contasp["Status"] == "Aberto"]
+                    total_contasp = df_abertas["Valor"].sum()
+                    st.metric(label="Contas a Pagar (Abertas)", value=f"R$ {total_contasp:,.2f}")
+                    if not df_abertas.empty:
+                        st.bar_chart(df_abertas.groupby("Fornecedor")["Valor"].sum())
+                else:
+                    st.metric(label="Contas a Pagar (Abertas)", value="R$ 0,00")
+            except Exception:
+                st.metric(label="Contas a Pagar (Abertas)", value="R$ 0,00")
                 
         case "Cadastros":
-            cadastro_opcao=st.radio("Escolha uma Opção:", ["Cadastro de Usuário", "Cadastro de Fornecedor", "Cadastro de Produto", "Cadastro Filial"], horizontal=True)
+            cadastro_opcao = st.radio("Escolha uma Opção:", ["Cadastro de Usuário", "Cadastro de Fornecedor", "Cadastro de Produto", "Cadastro Filial"], horizontal=True)
             match cadastro_opcao:
                 case "Cadastro de Usuário":    
                     st.write("Cadastro de Usuário")
                     usuario = st.text_input("Usuário")
                     email = st.text_input("E-mail")
                     senha = st.text_input("Senha", type="password")
-                    if st.button ("Salvar Usuário"):
-                        novo_usuario = pd.DataFrame([{"Usuario":usuario, "E-mail":email, "Senha":senha}])
-                        if os.path.exists("usuarios.csv"):
-                            novo_usuario.to_csv("usuarios.csv", mode="a", header=False, index=False)
+                    if st.button("Salvar Usuário"):
+                        if usuario and email and senha:
+                            try:
+                                supabase.table("usuarios").insert({
+                                    "Usuario": usuario,
+                                    "E-mail": email,
+                                    "Senha": senha
+                                }).execute()
+                                # Mostra o resultado bruto na tela para sabermos se o Supabase aceitou
+                                st.write("Resposta do Supabase:", resposta)
+                                st.success("Usuário Salvo com Sucesso no Supabase!")
+                            except Exception as e:
+                                st.error(f"Erro ao salvar usuário: {e}")
                         else:
-                            novo_usuario.to_csv("usuarios.csv", index=False)
-                        st.success(f"Usuário Salvo com Sucesso")
+                            st.warning("Preencha todos os campos.")
+
                 case "Cadastro de Fornecedor":
                     st.write("Cadastro de Fornecedor")
                     nome_fornecedor = st.text_input("Razão Social")
@@ -118,12 +151,17 @@ else:
                     cnpj_fornecedor = st.text_input("CNPJ")
                     contato_fornecedor = st.text_input("Contato")
                     if st.button("Salvar Fornecedor"):
-                        novo_fornecedor = pd.DataFrame([{"Nome Fornecedor": nome_fornecedor, "E-mail Fornecedor": email_fornecedor, "CNPJ": cnpj_fornecedor, "Contato Fornecedor": contato_fornecedor}])
-                        if os.path.exists("fornecedor.csv"):
-                            novo_fornecedor.to_csv("fornecedor.csv", mode="a", header=False, index=False)
-                        else:
-                            novo_fornecedor.to_csv("fornecedor.csv", index=False)
-                        st.success(f"Fornecedor Cadastrado com Sucesso!")
+                        try:
+                            supabase.table("fornecedor").insert({
+                                "Nome Fornecedor": nome_fornecedor,
+                                "E-mail Fornecedor": email_fornecedor,
+                                "CNPJ": cnpj_fornecedor,
+                                "Contato Fornecedor": contato_fornecedor
+                            }).execute()
+                            st.success("Fornecedor Cadastrado com Sucesso no Supabase!")
+                        except Exception as e:
+                            st.error(f"Erro ao salvar fornecedor: {e}")
+
                 case "Cadastro de Produto":
                     st.write("Cadastro de Produtos")
                     descricao = st.text_input("Descrição Produto")
@@ -143,23 +181,26 @@ else:
                     subcategoria_produto = st.selectbox("Defina a Subcategoria", categorias[categoria_produto])
                     quantidade_produto = st.number_input("Quantidade", min_value=0)
 
-                    prod_fil = pd.read_csv("filial.csv")
-                    opcoes_filiais = ["Todas"] + prod_fil["Nome"].tolist()
+                    try:
+                        df_fil = pd.DataFrame(supabase.table("filial").select("*").execute().data)
+                        opcoes_filiais = ["Todas"] + (df_fil["Nome"].tolist() if not df_fil.empty and "Nome" in df_fil.columns else [])
+                    except Exception:
+                        opcoes_filiais = ["Todas"]
+
                     filial_escolhida = st.selectbox("Filial", opcoes_filiais)
 
                     if st.button("Salvar Cadastro"):
-                        # Calcula o código do produto
-                        if os.path.exists("produto.csv"):
-                            df_prod = pd.read_csv("produto.csv")
-                            ultimo_codigo = df_prod["Codigo"].max()
-                            novo_codigo = ultimo_codigo + 1
-                        else:
+                        try:
+                            # Pega o último código cadastrado no Supabase
+                            res_prod = supabase.table("produto").select("Codigo").order("Codigo", desc=True).limit(1).execute()
+                            dados_ult = res_prod.data
+                            novo_codigo = (dados_ult[0]["Codigo"] + 1) if dados_ult and "Codigo" in dados_ult[0] else 1
+                        except Exception:
                             novo_codigo = 1
 
-                        if filial_escolhida == "Todas":
-                            # Cria uma linha para cada filial
-                            lista_produtos = []
-                            for nome_filial in prod_fil["Nome"].tolist():
+                        lista_produtos = []
+                        if filial_escolhida == "Todas" and not df_fil.empty:
+                            for nome_filial in df_fil["Nome"].tolist():
                                 lista_produtos.append({
                                     "Codigo": novo_codigo,
                                     "Descrição Produto": descricao,
@@ -170,10 +211,8 @@ else:
                                     "Quantidade Produto": quantidade_produto,
                                     "Filial": nome_filial
                                 })
-                            novo_produto = pd.DataFrame(lista_produtos)
                         else:
-                            # Cria apenas uma linha
-                            novo_produto = pd.DataFrame([{
+                            lista_produtos.append({
                                 "Codigo": novo_codigo,
                                 "Descrição Produto": descricao,
                                 "ean_produto": ean_produto,
@@ -182,15 +221,14 @@ else:
                                 "Sub-Categoria": subcategoria_produto,
                                 "Quantidade Produto": quantidade_produto,
                                 "Filial": filial_escolhida
-                            }])
+                            })
 
-                        # Salva no CSV
-                        if os.path.exists("produto.csv"):
-                            novo_produto.to_csv("produto.csv", mode="a", header=False, index=False)
-                        else:
-                            novo_produto.to_csv("produto.csv", index=False)
+                        try:
+                            supabase.table("produto").insert(lista_produtos).execute()
+                            st.success(f"Produto código {novo_codigo} cadastrado com sucesso no Supabase!")
+                        except Exception as e:
+                            st.error(f"Erro ao salvar produto: {e}")
 
-                        st.success(f"Produto código {novo_codigo} cadastrado com sucesso")
                 case "Cadastro Filial":
                     st.write("Cadastro de Filial")
                     nome = st.text_input("Descrição Filial")
@@ -198,12 +236,17 @@ else:
                     endereco = st.text_input("Endereço")
                     codigo = st.text_input("Código Filial")
                     if st.button("Salvar Cadastro"):
-                        nova_filial = pd.DataFrame([{"Nome":nome, "CNPJ":cnpj, "Endereço":endereco, "Código":codigo}])
-                        if os.path.exists("filial.csv"):
-                            nova_filial.to_csv("filial.csv", mode="a", header=False, index=False)
-                        else:
-                            nova_filial.to_csv("filial.csv", index=False)
-                        st.success(f"Filial Cadastrada com Sucesso")                        
+                        try:
+                            supabase.table("filial").insert({
+                                "Nome": nome,
+                                "CNPJ": cnpj,
+                                "Endereço": endereco,
+                                "Código": codigo
+                            }).execute()
+                            st.success("Filial Cadastrada com Sucesso no Supabase!")
+                        except Exception as e:
+                            st.error(f"Erro ao salvar filial: {e}")                        
+
         case "Almox":
             st.write("Almoxarifado")
             menu_almox = st.radio(
@@ -215,275 +258,270 @@ else:
             match menu_almox:
                 case "Consulta Estoque":
                     st.write("Consulta Estoque")
-                    painel_estoque = pd.read_csv("produto.csv")
-                    st.dataframe(painel_estoque, use_container_width=True)
+                    try:
+                        res = supabase.table("produto").select("*").execute()
+                        painel_estoque = pd.DataFrame(res.data)
+                        if not painel_estoque.empty:
+                            st.dataframe(painel_estoque, use_container_width=True)
+                        else:
+                            st.info("Nenhum produto cadastrado no Supabase.")
+                    except Exception as e:
+                        st.error(f"Erro ao carregar estoque: {e}")
 
                 case "Requisição de Compras":
                     st.write("Requisição de Compras")
+                    try:
+                        df_produtos = pd.DataFrame(supabase.table("produto").select("*").execute().data)
+                        df_filial = pd.DataFrame(supabase.table("filial").select("*").execute().data)
+                        df_nome_projeto = pd.DataFrame(supabase.table("projeto").select("*").execute().data)
 
-                    # Carrega dados
-                    df_produtos = pd.read_csv("produto.csv")
-                    produto_escolhido = st.selectbox("Produto", df_produtos["Descrição Produto"].unique().tolist())
-                    quantidade = st.number_input("Quantidade", min_value=1)
-                    df_filial = pd.read_csv("filial.csv")
-                    filial = st.selectbox("Filial Solicitante", df_filial["Nome"].unique().tolist())
-                    df_nome_projeto = pd.read_csv("projeto.csv")
-                    nome_projeto = st.selectbox("Descrição do Projeto", df_nome_projeto["Descrição"])
-                    n_projeto = st.selectbox("Número Projeto; OS", df_nome_projeto["Número Projeto"] )
+                        prod_lista = df_produtos["Descrição Produto"].unique().tolist() if not df_produtos.empty else []
+                        fil_lista = df_filial["Nome"].unique().tolist() if not df_filial.empty else []
+                        proj_desc = df_nome_projeto["Descrição"].tolist() if not df_nome_projeto.empty else []
+                        proj_num = df_nome_projeto["Número Projeto"].tolist() if not df_nome_projeto.empty else []
 
-                    # Inicializa lista de itens
-                    if "item_requisicao" not in st.session_state:
-                        st.session_state.item_requisicao = []
+                        produto_escolhido = st.selectbox("Produto", prod_lista)
+                        quantidade = st.number_input("Quantidade", min_value=1)
+                        filial = st.selectbox("Filial Solicitante", fil_lista)
+                        nome_projeto = st.selectbox("Descrição do Projeto", proj_desc)
+                        n_projeto = st.selectbox("Número Projeto; OS", proj_num)
 
-                    # Botão para adicionar produto
-                    if st.button("Adicionar Produto"):
-                        item = {
-                            "Produto": produto_escolhido,
-                            "Quantidade": quantidade,
-                            "Filial Requisitante": filial,
-                            "Nome Projeto": nome_projeto, "N° Projeto":n_projeto
-                        }
-                        st.session_state.item_requisicao.append(item)
-                        st.success(f"Produto {produto_escolhido} adicionado (Qtd: {quantidade})")
+                        if "item_requisicao" not in st.session_state:
+                            st.session_state.item_requisicao = []
 
-                    # Mostrar itens acumulados
-                    if len(st.session_state.item_requisicao) > 0:
-                        st.subheader("Itens adicionados à requisição")
-                        st.table(pd.DataFrame(st.session_state.item_requisicao))
+                        if st.button("Adicionar Produto"):
+                            item = {
+                                "Produto": produto_escolhido,
+                                "Quantidade": quantidade,
+                                "Filial Requisitante": filial,
+                                "Nome Projeto": nome_projeto, 
+                                "N° Projeto": n_projeto
+                            }
+                            st.session_state.item_requisicao.append(item)
+                            st.success(f"Produto {produto_escolhido} adicionado (Qtd: {quantidade})")
 
-                    # Botão para salvar requisição inteira
-                    if st.button("Salvar Requisição"):
-                        if os.path.exists("requisicoes.csv"):
-                            df_req = pd.read_csv("requisicoes.csv")
-                            ultimo_codigo = df_req["Codigo"].max()
-                            novo_codigo = ultimo_codigo + 1
-                        else:
-                            novo_codigo = 1
+                        if len(st.session_state.item_requisicao) > 0:
+                            st.subheader("Itens adicionados à requisição")
+                            st.table(pd.DataFrame(st.session_state.item_requisicao))
 
-                        # Aplica o mesmo código a todos os itens
-                        nova_requisicao = pd.DataFrame([
-                            {"Codigo": novo_codigo, **item} for item in st.session_state.item_requisicao
-                        ])
+                        if st.button("Salvar Requisição"):
+                            try:
+                                res_req = supabase.table("requisicoes").select("Codigo").order("Codigo", desc=True).limit(1).execute()
+                                ult_req = res_req.data
+                                novo_codigo = (ult_req[0]["Codigo"] + 1) if ult_req and "Codigo" in ult_req[0] else 1
+                            except Exception:
+                                novo_codigo = 1
 
-                        # Salva no CSV
-                        if os.path.exists("requisicoes.csv"):
-                            nova_requisicao.to_csv("requisicoes.csv", mode="a", header=False, index=False)
-                        else:
-                            nova_requisicao.to_csv("requisicoes.csv", index=False)
-                        st.success(f"Pedido de Compra {novo_codigo} salvo com sucesso")
-                    if st.button("Limpar Lista"):
-                        st.session_state.item_requisicao = []
-                        st.warning("Lista de itens foi limpa.")    
+                            nova_requisicao = [
+                                {"Codigo": novo_codigo, **item} for item in st.session_state.item_requisicao
+                            ]
+                            supabase.table("requisicoes").insert(nova_requisicao).execute()
+                            st.success(f"Pedido de Compra {novo_codigo} salvo com sucesso no Supabase!")
+
+                        if st.button("Limpar Lista"):
+                            st.session_state.item_requisicao = []
+                            st.warning("Lista de itens foi limpa.")
+                    except Exception as e:
+                        st.error(f"Erro na requisição: {e}")
 
                 case "Ajuste de Estoque":
-                    st.write("Ajuste de Estoque")            
-                    df_produtos = pd.read_csv("produto.csv")
-                    ajuste_produto = st.selectbox("Produto", df_produtos["Descrição Produto"].tolist())
-                    ajuste_quantidade = st.number_input("Nova Quantidade", min_value=0)
-                    ajuste_motivos = st.selectbox("Motivo Ajuste", ["Avaria", "Inventário", "Consumo"])
-                    df_filial = pd.read_csv("filial.csv")
-                    ajuste_filial = st.selectbox("Filial Ajuste", df_filial["Nome"].tolist())         
-                    if st.button("Salvar Ajuste"):
-                        ajuste_estoque = pd.DataFrame([{
-                            "Produto": ajuste_produto,
-                            "Quantidade": ajuste_quantidade,
-                            "Motivo Ajuste": ajuste_motivos,
-                            "Filial": ajuste_filial
-                        }])
-                        if os.path.exists("ajuste_estoque.csv"):
-                            ajuste_estoque.to_csv("ajuste_estoque.csv", mode="a", header=False, index=False)
-                        else:
-                            ajuste_estoque.to_csv("ajuste_estoque.csv", index=False)
-                        df_produtos.loc[
-                            (df_produtos["Descrição Produto"] == ajuste_produto) &
-                            (df_produtos["Filial"] == ajuste_filial),
-                            "Quantidade Produto"
-                        ] = ajuste_quantidade
-                        df_produtos.to_csv("produto.csv", index=False)
-                        st.success("Ajuste Realizado com Sucesso")
+                    st.write("Ajuste de Estoque")
+                    try:
+                        df_produtos = pd.DataFrame(supabase.table("produto").select("*").execute().data)
+                        df_filial = pd.DataFrame(supabase.table("filial").select("*").execute().data)
+
+                        prod_lista = df_produtos["Descrição Produto"].tolist() if not df_produtos.empty else []
+                        fil_lista = df_filial["Nome"].tolist() if not df_filial.empty else []
+
+                        ajuste_produto = st.selectbox("Produto", prod_lista)
+                        ajuste_quantidade = st.number_input("Nova Quantidade", min_value=0)
+                        ajuste_motivos = st.selectbox("Motivo Ajuste", ["Avaria", "Inventário", "Consumo"])
+                        ajuste_filial = st.selectbox("Filial Ajuste", fil_lista)         
+
+                        if st.button("Salvar Ajuste"):
+                            supabase.table("ajuste_estoque").insert({
+                                "Produto": ajuste_produto,
+                                "Quantidade": ajuste_quantidade,
+                                "Motivo Ajuste": ajuste_motivos,
+                                "Filial": ajuste_filial
+                            }).execute()
+
+                            # Atualiza no Supabase
+                            supabase.table("produto").update({"Quantidade Produto": ajuste_quantidade}).eq("Descrição Produto", ajuste_produto).eq("Filial", ajuste_filial).execute()
+                            st.success("Ajuste Realizado com Sucesso no Supabase!")
+                    except Exception as e:
+                        st.error(f"Erro no ajuste de estoque: {e}")
+
                 case "Recebimento":
                     st.write("Recebimento de Mercadorias")
+                    try:
+                        df_pedido = pd.DataFrame(supabase.table("vencedores").select("*").execute().data)
+                        if not df_pedido.empty:
+                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"]
+                            pedido = st.selectbox("Selecione o Pedido para Recebimento", df_pedido["PedidoLabel"].unique().tolist())
 
-                    # Carrega pedidos já definidos
-                    df_pedido = pd.read_csv("vencedores.csv")
+                            numero_pedido, fornecedor = pedido.split(" - ", 1)
+                            df_itens_pedido = df_pedido[
+                                (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
+                                (df_pedido["Fornecedor"] == fornecedor)
+                            ]
 
-                    # Selectbox para escolher o pedido
-                    df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"]
-                    pedido = st.selectbox("Selecione o Pedido para Recebimento", df_pedido["PedidoLabel"].unique().tolist())
+                            st.write("Itens do Pedido:")
+                            st.table(df_itens_pedido[["Produto", "Preço Cotado"]])
 
-                    # Extrai NumeroPedido e Fornecedor
-                    numero_pedido, fornecedor = pedido.split(" - ", 1)
-                    df_itens_pedido = df_pedido[
-                        (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
-                        (df_pedido["Fornecedor"] == fornecedor)
-                    ]
+                            df_produto = pd.DataFrame(supabase.table("produto").select("*").execute().data)
+                            filiais = df_produto["Filial"].unique().tolist() if not df_produto.empty else []
+                            filial_escolhida = st.selectbox("Selecione a Filial de Entrada", filiais)
 
-                    st.write("Itens do Pedido:")
-                    st.table(df_itens_pedido[["Produto", "Preço Cotado"]])
+                            recebimentos = {}
+                            for _, row in df_itens_pedido.iterrows():
+                                qtd_recebida = st.number_input(
+                                    f"Quantidade recebida de {row['Produto']} na filial {filial_escolhida}",
+                                    min_value=0,
+                                    step=1
+                                )
+                                recebimentos[row["Produto"]] = qtd_recebida
 
-                    # Carrega produtos atuais
-                    df_produto = pd.read_csv("produto.csv")
-
-                    # Selectbox para escolher a filial que está recebendo
-                    filiais = df_produto["Filial"].unique().tolist()
-                    filial_escolhida = st.selectbox("Selecione a Filial de Entrada", filiais)
-
-                    # Inputs para quantidade recebida
-                    recebimentos = {}
-                    for _, row in df_itens_pedido.iterrows():
-                        qtd_recebida = st.number_input(
-                            f"Quantidade recebida de {row['Produto']} na filial {filial_escolhida}",
-                            min_value=0,
-                            step=1
-                        )
-                        recebimentos[row["Produto"]] = qtd_recebida
-
-                    if st.button("Confirmar Recebimento"):
-                        for produto, qtd in recebimentos.items():
-                            if qtd > 0:
-                                # Atualiza estoque apenas na filial escolhida
-                                df_produto.loc[
-                                    (df_produto["Descrição Produto"] == produto) &
-                                    (df_produto["Filial"] == filial_escolhida),
-                                    "Quantidade Produto"
-                                ] += qtd
-
-                        # Salva atualização
-                        df_produto.to_csv("produto.csv", index=False)
-                        st.success(f"Estoque atualizado com sucesso na filial {filial_escolhida}!")
-
-
+                            if st.button("Confirmar Recebimento"):
+                                for produto, qtd in recebimentos.items():
+                                    if qtd > 0:
+                                        # Busca a quantidade atual
+                                        res_q = supabase.table("produto").select("id, Quantidade Produto").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).execute()
+                                        if res_q.data:
+                                            row_p = res_q.data[0]
+                                            novo_total = row_p["Quantidade Produto"] + qtd
+                                            supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
+                                st.success(f"Estoque atualizado com sucesso na filial {filial_escolhida}!")
+                        else:
+                            st.info("Nenhum pedido de vencedor encontrado.")
+                    except Exception as e:
+                        st.error(f"Erro no recebimento: {e}")
 
         case "Compras":
             st.write("Compras")
-            escolha_compras= st.radio("Escolha uma Opoção:", ["Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
+            escolha_compras = st.radio("Escolha uma Opção:", ["Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
             match escolha_compras:
                 case "Gestão de Compras":
                     st.write("Gestão de Compras")
-                    df_req_gestao = pd.read_csv("requisicoes.csv")
-                    df_req_gestao["Requisicao_Label"] = df_req_gestao["Codigo"].astype(str) + " - " + df_req_gestao["Nome Projeto"]
-                    requisicao_compra = st.selectbox("Requisição", df_req_gestao["Requisicao_Label"].unique().tolist())
-                    df_req_fornecedor= pd.read_csv("fornecedor.csv")
-                    req_fornecedor = st.selectbox("Escolha o Fornecedor", df_req_fornecedor["Nome Fornecedor"])
-                    codigo_selecionado = requisicao_compra.split(" - ")[0]
-                    data_emissao = st.date_input("Data de Emissão do Pedido")
-                    data_recebimento = st.date_input("Data de Recebimento do Pedido")
-                    df_requisicao = pd.read_csv("requisicoes.csv")
-                    df_filtrada = df_requisicao[df_requisicao["Codigo"] == int(codigo_selecionado)]
-                    df_filtrada["Preço Cotado"] = 0.0
-                    df_editado = st.data_editor(df_filtrada)
-                    if st.button("Salvar Cotação"):
-                        df_editado["Requisição"] = requisicao_compra
-                        df_editado["Fornecedor"] = req_fornecedor
-                        df_editado["Data Emissão"] = data_emissao
-                        df_editado["Data Recebimento"] = data_recebimento
-                        try:
-                            df_existente = pd.read_csv("cotacoes.csv")
-                            df_final = pd.concat([df_existente, df_editado], ignore_index=True)
-                        except FileNotFoundError:
-                            df_final = df_editado
-                        df_final.to_csv("cotacoes.csv", index=False)
-                        st.success("Cotação salva com sucesso!")
+                    try:
+                        df_req_gestao = pd.DataFrame(supabase.table("requisicoes").select("*").execute().data)
+                        df_req_fornecedor = pd.DataFrame(supabase.table("fornecedor").select("*").execute().data)
+
+                        if not df_req_gestao.empty and not df_req_fornecedor.empty:
+                            df_req_gestao["Requisicao_Label"] = df_req_gestao["Codigo"].astype(str) + " - " + df_req_gestao["Nome Projeto"]
+                            requisicao_compra = st.selectbox("Requisição", df_req_gestao["Requisicao_Label"].unique().tolist())
+                            req_fornecedor = st.selectbox("Escolha o Fornecedor", df_req_fornecedor["Nome Fornecedor"])
+                            codigo_selecionado = requisicao_compra.split(" - ")[0]
+                            data_emissao = st.date_input("Data de Emissão do Pedido")
+                            data_recebimento = st.date_input("Data de Recebimento do Pedido")
+
+                            df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == int(codigo_selecionado)].copy()
+                            df_filtrada["Preço Cotado"] = 0.0
+                            df_editado = st.data_editor(df_filtrada)
+
+                            if st.button("Salvar Cotação"):
+                                df_editado["Requisição"] = requisicao_compra
+                                df_editado["Fornecedor"] = req_fornecedor
+                                df_editado["Data Emissão"] = str(data_emissao)
+                                df_editado["Data Recebimento"] = str(data_recebimento)
+                                
+                                dados_inserir = df_editado.to_dict(orient="records")
+                                supabase.table("cotacoes").insert(dados_inserir).execute()
+                                st.success("Cotação salva com sucesso no Supabase!")
+                        else:
+                            st.info("Cadastre requisições e fornecedores primeiro.")
+                    except Exception as e:
+                        st.error(f"Erro na gestão de compras: {e}")
+
                 case "Definição de Vencedores":
                     st.write("Definição de Vencedores")
+                    try:
+                        df = pd.DataFrame(supabase.table("cotacoes").select("*").execute().data)
+                        if not df.empty:
+                            codigos_unicos = df["Codigo"].unique().tolist()
+                            codigo_escolhido = st.selectbox("Escolha o Código da Requisição", codigos_unicos)
 
-                    # Carrega cotações
-                    df = pd.read_csv("cotacoes.csv")
-
-                    # Selectbox para escolher código da requisição
-                    codigos_unicos = df["Codigo"].unique().tolist()
-                    codigo_escolhido = st.selectbox("Escolha o Código da Requisição", codigos_unicos)
-
-                    # Filtra apenas as cotações desse código
-                    df_filtrado = df[df["Codigo"] == codigo_escolhido]
-
-                    # Cria tabela comparativa: Produto x Fornecedor
-                    tabela = df_filtrado.pivot_table(
-                        index="Produto",
-                        columns="Fornecedor",
-                        values="Preço Cotado"
-                    )
-
-                    # Função para destacar menor preço em verde
-                    def highlight_min(s):
-                        is_min = s == s.min()
-                        return ['background-color: lightgreen' if v else '' for v in is_min]
-
-                    st.write("Comparativo de Cotações")
-                    st.dataframe(tabela.style.apply(highlight_min, axis=1), use_container_width=True)
-
-                    # Checkboxes para definir vencedores
-                    st.write("Definir Vencedores")
-                    vencedores = {}
-                    for produto, linha in tabela.iterrows():
-                        fornecedor_min = linha.idxmin()
-                        st.write(f"Produto: {produto}")
-                        for fornecedor, valor in linha.items():
-                            default = (fornecedor == fornecedor_min)  # pré-seleciona o menor preço
-                            vencedores[(produto, fornecedor)] = st.checkbox(
-                                f"{fornecedor} - R$ {valor:.2f}", value=default, key=f"{produto}_{fornecedor}"
+                            df_filtrado = df[df["Codigo"] == codigo_escolhido]
+                            tabela = df_filtrado.pivot_table(
+                                index="Produto",
+                                columns="Fornecedor",
+                                values="Preço Cotado"
                             )
 
-                    # Botão para salvar vencedores
-                    if st.button("Definir Vencedores"):
-                        selecionados = [
-                        {
-                            "Produto": prod,
-                            "Fornecedor": forn,
-                            "Preço Cotado": float(tabela.loc[prod, forn]),
-                            "Selecionado": True
-                        }
-                        for (prod, forn), marcado in vencedores.items() if marcado
-                    ]
+                            def highlight_min(s):
+                                is_min = s == s.min()
+                                return ['background-color: lightgreen' if v else '' for v in is_min]
 
-                        if selecionados:
-                            df_vencedores = pd.DataFrame(selecionados)
+                            st.write("Comparativo de Cotações")
+                            st.dataframe(tabela.style.apply(highlight_min, axis=1), use_container_width=True)
 
-                        # Se já existe arquivo, carrega para descobrir último código
-                        if os.path.exists("vencedores.csv"):
-                            df_existente = pd.read_csv("vencedores.csv")
-                            if "NumeroPedido" in df_existente.columns:
-                                ultimo_numero = df_existente["NumeroPedido"].max()
-                            else:
-                                ultimo_numero = 0  # se não existir, começa do zero
-                            proximo_numero = ultimo_numero + 1
+                            st.write("Definir Vencedores")
+                            vencedores = {}
+                            for produto, linha in tabela.iterrows():
+                                fornecedor_min = linha.idxmin()
+                                st.write(f"Produto: {produto}")
+                                for fornecedor, valor in linha.items():
+                                    default = (fornecedor == fornecedor_min)
+                                    vencedores[(produto, fornecedor)] = st.checkbox(
+                                        f"{fornecedor} - R$ {valor:.2f}", value=default, key=f"{produto}_{fornecedor}"
+                                    )
+
+                            if st.button("Definir Vencedores"):
+                                try:
+                                    res_v = supabase.table("vencedores").select("NumeroPedido").order("NumeroPedido", desc=True).limit(1).execute()
+                                    ult_v = res_v.data
+                                    proximo_numero = (ult_v[0]["NumeroPedido"] + 1) if ult_v and "NumeroPedido" in ult_v[0] else 1
+                                except Exception:
+                                    proximo_numero = 1
+
+                                selecionados = [
+                                    {
+                                        "Produto": prod,
+                                        "Fornecedor": forn,
+                                        "Preço Cotado": float(tabela.loc[prod, forn]),
+                                        "Selecionado": True,
+                                        "NumeroPedido": proximo_numero
+                                    }
+                                    for (prod, forn), marcado in vencedores.items() if marcado
+                                ]
+
+                                if selecionados:
+                                    supabase.table("vencedores").insert(selecionados).execute()
+                                    st.success(f"Vencedores definidos com sucesso! Número do pedido: {proximo_numero}")
                         else:
-                            proximo_numero = 1
+                            st.info("Nenhuma cotação registrada.")
+                    except Exception as e:
+                        st.error(f"Erro ao definir vencedores: {e}")
 
-                        df_vencedores["NumeroPedido"] = proximo_numero
+                case "Pedidos de Compras":
+                    st.write("Pedidos de Compras")
+                    try:
+                        df_pedido = pd.DataFrame(supabase.table("vencedores").select("*").execute().data)
+                        if not df_pedido.empty:
+                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"]
+                            pedido = st.selectbox("Selecione um Pedido de Compra", df_pedido["PedidoLabel"].unique().tolist())
 
-                        # Salva no CSV
-                        if os.path.exists("vencedores.csv"):
-                            df_vencedores.to_csv("vencedores.csv", mode="a", header=False, index=False)
-                        else:
-                            df_vencedores.to_csv("vencedores.csv", index=False)
-
-                        st.success(f"Vencedores definidos com sucesso! Número do pedido: {proximo_numero}")
-
-
-                    # Botão para emitir pedido em PDF
-                    if st.button("Emitir Pedido de Compra"):
-                        try:
-                            df_vencedores = pd.read_csv("vencedores.csv")
-                            numero_pedido = df_vencedores["NumeroPedido"].max()  # pega o último número
+                            numero_pedido, fornecedor = pedido.split(" - ", 1)
 
                             buffer = io.BytesIO()
                             doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
                             elementos = []
 
-                            # Logo da CapsuleSys (coloque o arquivo na pasta do projeto)
-                            logo = Image("capsuleSys.png", width=120, height=50)
-                            elementos.append(logo)
-                            elementos.append(Spacer(1, 20))
+                            if os.path.exists("capsuleSys.png"):
+                                logo = Image("capsuleSys.png", width=120, height=50)
+                                elementos.append(logo)
+                                elementos.append(Spacer(1, 20))
 
                             estilos = getSampleStyleSheet()
-                            titulo = Paragraph(f"Pedido de Compra Nº {numero_pedido}", estilos["Title"])
+                            titulo = Paragraph(f"Pedido de Compra {pedido}", estilos["Title"])
                             elementos.append(titulo)
                             elementos.append(Spacer(1, 20))
 
-                            # Monta tabela com vencedores do último pedido
                             dados = [["Produto", "Fornecedor", "Preço Cotado"]]
-                            for _, row in df_vencedores[df_vencedores["NumeroPedido"] == numero_pedido].iterrows():
+                            for _, row in df_pedido[
+                                (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
+                                (df_pedido["Fornecedor"] == fornecedor)
+                            ].iterrows():
                                 dados.append([row["Produto"], row["Fornecedor"], f"R$ {row['Preço Cotado']:.2f}"])
 
                             tabela_pdf = Table(dados, colWidths=[400, 250, 100])
@@ -504,156 +542,98 @@ else:
                             st.download_button(
                                 label="📄 Baixar Pedido de Compra (PDF)",
                                 data=buffer,
-                                file_name=f"pedido_compra_{numero_pedido}.pdf",
+                                file_name=f"pedido_compra_{numero_pedido}_{fornecedor}.pdf",
                                 mime="application/pdf"
                             )
-                            st.success(f"Pedido de compra Nº {numero_pedido} gerado com sucesso!")
-                        except FileNotFoundError:
-                            st.error("Nenhum vencedor definido ainda. Clique em 'Definir Vencedores' primeiro.")
-
-
-
-                case "Pedidos de Compras":
-                    st.write("Pedidos de Compras")
-                    df_pedido = pd.read_csv("vencedores.csv")
-
-                    # Cria coluna com NumeroPedido + Fornecedor
-                    df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"]
-
-                    pedido = st.selectbox("Selecione um Pedido de Compra", df_pedido["PedidoLabel"].unique().tolist())
-
-                    # Gera PDF
-                    buffer = io.BytesIO()
-                    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
-                    elementos = []
-
-                    logo = Image("capsuleSys.png", width=120, height=50)
-                    elementos.append(logo)
-                    elementos.append(Spacer(1, 20))
-
-                    estilos = getSampleStyleSheet()
-                    titulo = Paragraph(f"Pedido de Compra {pedido}", estilos["Title"])
-                    elementos.append(titulo)
-                    elementos.append(Spacer(1, 20))
-
-                    # Extrai NumeroPedido e Fornecedor
-                    numero_pedido, fornecedor = pedido.split(" - ", 1)
-
-                    dados = [["Produto", "Fornecedor", "Preço Cotado"]]
-                    for _, row in df_pedido[
-                        (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
-                        (df_pedido["Fornecedor"] == fornecedor)
-                    ].iterrows():
-                        dados.append([row["Produto"], row["Fornecedor"], f"R$ {row['Preço Cotado']:.2f}"])
-
-                    tabela_pdf = Table(dados, colWidths=[400, 250, 100])
-                    tabela_pdf.setStyle(TableStyle([
-                        ("BACKGROUND", (0,0), (-1,0), colors.grey),
-                        ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
-                        ("ALIGN", (0,0), (-1,-1), "CENTER"),
-                        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-                        ("BOTTOMPADDING", (0,0), (-1,0), 12),
-                        ("BACKGROUND", (0,1), (-1,-1), colors.beige),
-                        ("GRID", (0,0), (-1,-1), 1, colors.black),
-                    ]))
-                    elementos.append(tabela_pdf)
-
-                    doc.build(elementos)
-                    buffer.seek(0)
-
-                    st.download_button(
-                        label="📄 Baixar Pedido de Compra (PDF)",
-                        data=buffer,
-                        file_name=f"pedido_compra_{numero_pedido}_{fornecedor}.pdf",
-                        mime="application/pdf"
-                    )
+                        else:
+                            st.info("Nenhum pedido gerado.")
+                    except Exception as e:
+                        st.error(f"Erro ao gerar pedido: {e}")
 
         case "Gerencial":
             st.write("Gerencial")
-            op_gerencial=st.radio("Escolha uma Opção:", ["Fluxo de Caixa", "Contas a Pagar", "Contas a Receber", "Relatórios Gerenciais"], horizontal=True)
+            op_gerencial = st.radio("Escolha uma Opção:", ["Fluxo de Caixa", "Contas a Pagar", "Contas a Receber", "Relatórios Gerenciais"], horizontal=True)
             match op_gerencial:
                 case "Fluxo de Caixa":
-                    fluxo_caixa=st.number_input("Valor a Cadastrar")
-                    valor = pd.DataFrame([{"Valor":fluxo_caixa}])
+                    fluxo_caixa = st.number_input("Valor a Cadastrar")
                     if st.button("Salvar Valor"):
-                        if os.path.exists("fluxo_caixa.csv"):
-                            valor.to_csv("fluxo_caixa.csv", mode="a", header=False, index=False)
-                        else:
-                            valor.to_csv("fluxo_caixa.csv", index=False)
-                        st.success("Valor Cadastrado com Sucesso")
+                        try:
+                            supabase.table("fluxo_caixa").insert({"Valor": fluxo_caixa}).execute()
+                            st.success("Valor Cadastrado com Sucesso no Supabase!")
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+
                 case "Contas a Pagar":
                     st.subheader("Cadastrar Conta a Pagar")
-                    nota_fiscal = st.text_input("N° Nota Fiscal")
-                    df_recebedor = pd.read_csv("fornecedor.csv")
-                    recebedor = st.selectbox("Fornecedor", df_recebedor["Nome Fornecedor"])
-                    valor = st.number_input("Valor", min_value=0.0, step=0.01)
-                    vencimento = st.date_input("Data de Vencimento")
-                    n_faturas = st.text_input("Quantidade de Faturas")
+                    try:
+                        df_recebedor = pd.DataFrame(supabase.table("fornecedor").select("*").execute().data)
+                        forn_lista = df_recebedor["Nome Fornecedor"].tolist() if not df_recebedor.empty else []
 
-                    nova_fatura = pd.DataFrame([{
-                        "NF": nota_fiscal,
-                        "Fornecedor": recebedor,
-                        "Valor": valor,
-                        "Vencimento": vencimento,
-                        "QTD Faturas": n_faturas,
-                        "Status": "Aberto"
-                    }])
+                        nota_fiscal = st.text_input("N° Nota Fiscal")
+                        recebedor = st.selectbox("Fornecedor", forn_lista)
+                        valor = st.number_input("Valor", min_value=0.0, step=0.01)
+                        vencimento = st.date_input("Data de Vencimento")
+                        n_faturas = st.text_input("Quantidade de Faturas")
 
-                    if st.button("Salvar Fatura"):
-                        if os.path.exists("contas_a_pagar.csv"):
-                            nova_fatura.to_csv("contas_a_pagar.csv", mode="a", header=False, index=False)
-                        else:
-                            nova_fatura.to_csv("contas_a_pagar.csv", index=False)
-                        st.success("Fatura salva com sucesso!")
+                        if st.button("Salvar Fatura"):
+                            supabase.table("contas_a_pagar").insert({
+                                "NF": nota_fiscal,
+                                "Fornecedor": recebedor,
+                                "Valor": valor,
+                                "Vencimento": str(vencimento),
+                                "QTD Faturas": n_faturas,
+                                "Status": "Aberto"
+                            }).execute()
+                            st.success("Fatura salva com sucesso no Supabase!")
 
-                    # Visualização e marcação como paga
-                    if os.path.exists("contas_a_pagar.csv"):
-                        df_pagar = pd.read_csv("contas_a_pagar.csv")
-                        st.subheader("Faturas em Aberto")
-                        faturas_abertas = df_pagar[df_pagar["Status"] == "Aberto"]
-                        for i, row in faturas_abertas.iterrows():
-                            st.write(f"NF: {row['NF']} | Fornecedor: {row['Fornecedor']} | Valor: R$ {row['Valor']:.2f} | Vencimento: {row['Vencimento']}")
-                            if st.button(f"Marcar como Paga - NF {row['NF']}"):
-                                df_pagar.at[i, "Status"] = "Pago"
-                                df_pagar.to_csv("contas_a_pagar.csv", index=False)
-                                st.success(f"Fatura {row['NF']} marcada como paga!")
+                        df_pagar = pd.DataFrame(supabase.table("contas_a_pagar").select("*").execute().data)
+                        if not df_pagar.empty:
+                            st.subheader("Faturas em Aberto")
+                            faturas_abertas = df_pagar[df_pagar["Status"] == "Aberto"]
+                            for i, row in faturas_abertas.iterrows():
+                                st.write(f"NF: {row['NF']} | Fornecedor: {row['Fornecedor']} | Valor: R$ {row['Valor']:.2f} | Vencimento: {row['Vencimento']}")
+                                if st.button(f"Marcar como Paga - NF {row['NF']}", key=f"pagar_{row['NF']}_{i}"):
+                                    supabase.table("contas_a_pagar").update({"Status": "Pago"}).eq("NF", row["NF"]).execute()
+                                    st.success(f"Fatura {row['NF']} marcada como paga!")
+                                    st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro em Contas a Pagar: {e}")
 
                 case "Contas a Receber":
                     st.subheader("Cadastrar Conta a Receber")
-                    contrato = st.text_input("N° Contrato")
-                    df_cliente = pd.read_csv("fornecedor.csv")
-                    cliente = st.selectbox("Cliente", df_cliente["Nome Fornecedor"])
-                    valor = st.number_input("Valor", min_value=0.0, step=0.01)
-                    vencimento = st.date_input("Data de Vencimento")
-                    n_faturas = st.text_input("Quantidade de Faturas")
+                    try:
+                        df_cliente = pd.DataFrame(supabase.table("fornecedor").select("*").execute().data)
+                        cli_lista = df_cliente["Nome Fornecedor"].tolist() if not df_cliente.empty else []
 
-                    nova_receita = pd.DataFrame([{
-                        "Contrato": contrato,
-                        "Cliente": cliente,
-                        "Valor": valor,
-                        "Vencimento": vencimento,
-                        "QTD Faturas": n_faturas,
-                        "Status": "Aberto"
-                    }])
+                        contrato = st.text_input("N° Contrato")
+                        cliente = st.selectbox("Cliente", cli_lista)
+                        valor = st.number_input("Valor", min_value=0.0, step=0.01)
+                        vencimento = st.date_input("Data de Vencimento")
+                        n_faturas = st.text_input("Quantidade de Faturas")
 
-                    if st.button("Salvar Fatura"):
-                        if os.path.exists("contas_a_receber.csv"):
-                            nova_receita.to_csv("contas_a_receber.csv", mode="a", header=False, index=False)
-                        else:
-                            nova_receita.to_csv("contas_a_receber.csv", index=False)
-                        st.success("Fatura salva com sucesso!")
+                        if st.button("Salvar Fatura Receber"):
+                            supabase.table("contas_a_receber").insert({
+                                "Contrato": contrato,
+                                "Cliente": cliente,
+                                "Valor": valor,
+                                "Vencimento": str(vencimento),
+                                "QTD Faturas": n_faturas,
+                                "Status": "Aberto"
+                            }).execute()
+                            st.success("Fatura salva com sucesso no Supabase!")
 
-                    # Visualização e marcação como recebida
-                    if os.path.exists("contas_a_receber.csv"):
-                        df_receber = pd.read_csv("contas_a_receber.csv")
-                        st.subheader("Faturas em Aberto")
-                        faturas_abertas = df_receber[df_receber["Status"] == "Aberto"]
-                        for i, row in faturas_abertas.iterrows():
-                            st.write(f"Contrato: {row['Contrato']} | Cliente: {row['Cliente']} | Valor: R$ {row['Valor']:.2f} | Vencimento: {row['Vencimento']}")
-                            if st.button(f"Marcar como Recebida - Contrato {row['Contrato']}"):
-                                df_receber.at[i, "Status"] = "Recebido"
-                                df_receber.to_csv("contas_a_receber.csv", index=False)
-                                st.success(f"Fatura do contrato {row['Contrato']} marcada como recebida!")
+                        df_receber = pd.DataFrame(supabase.table("contas_a_receber").select("*").execute().data)
+                        if not df_receber.empty:
+                            st.subheader("Faturas em Aberto")
+                            faturas_abertas = df_receber[df_receber["Status"] == "Aberto"]
+                            for i, row in faturas_abertas.iterrows():
+                                st.write(f"Contrato: {row['Contrato']} | Cliente: {row['Cliente']} | Valor: R$ {row['Valor']:.2f} | Vencimento: {row['Vencimento']}")
+                                if st.button(f"Marcar como Recebida - Contrato {row['Contrato']}", key=f"receber_{row['Contrato']}_{i}"):
+                                    supabase.table("contas_a_receber").update({"Status": "Recebido"}).eq("Contrato", row["Contrato"]).execute()
+                                    st.success(f"Fatura do contrato {row['Contrato']} marcada como recebida!")
+                                    st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro em Contas a Receber: {e}")
 
                 case "Relatórios Gerenciais":
                     st.write("Relatórios Gerenciais")
@@ -663,106 +643,121 @@ else:
             if "lista_mensagem" not in st.session_state: 
                 st.session_state["lista_mensagem"] = []
 
-            # exibe histórico
             for mensagem in st.session_state["lista_mensagem"]:
                 st.chat_message(mensagem["role"]).write(mensagem["content"])
 
             texto_user = st.chat_input("Digite Sua Mensagem")
 
             if texto_user:
-                # adiciona mensagem do usuário
                 st.chat_message("user").write(texto_user)
                 st.session_state["lista_mensagem"].append({"role": "user", "content": texto_user})
 
-                # converter para formato aceito pela API
                 mensagens = []
                 for msg in st.session_state["lista_mensagem"]:
                     mensagens.append({"role": msg["role"],"parts": [{"text": msg["content"]}]})
 
-                # chamada à API
                 resposta_ia = client.models.generate_content(model=modelo, contents=mensagens)
                 texto_resposta_ia = resposta_ia.text
 
-                # exibe resposta
                 st.chat_message("assistant").write(texto_resposta_ia)
                 st.session_state["lista_mensagem"].append({"role": "assistant", "content": texto_resposta_ia})
 
         case "Contratos":
-            escolha_contratos=st.radio("Escolha uma opção:", ["Cadastro de Projeto","Emissão de Contratos", "Controle de Contratos", "Gestão de Contratos"], horizontal=True)
+            escolha_contratos = st.radio("Escolha uma opção:", ["Cadastro de Projeto", "Emissão de Contratos", "Controle de Contratos", "Gestão de Contratos"], horizontal=True)
             match escolha_contratos:
                 case "Cadastro de Projeto":
                     st.write("Cadastro de Projeto")
-                    nome_projeto=st.text_input("Nome do Projeto")
-                    n_projeto=st.text_input("Número do Projeto")
-                    valor_projeto=st.number_input("Valor previsto")
-                    df_projeto = pd.DataFrame([{"Descrição":nome_projeto, "Número Projeto":n_projeto, "Valor":valor_projeto}])
+                    nome_projeto = st.text_input("Nome do Projeto")
+                    n_projeto = st.text_input("Número do Projeto")
+                    valor_projeto = st.number_input("Valor previsto")
                     if st.button("Salvar Projeto"):
-                        if os.path.exists("projeto.csv"):
-                            df_projeto.to_csv("projeto.csv", mode="a", header=False, index=False)
-                        else:
-                            df_projeto.to_csv("projeto.csv", index=False)
-                        st.success("Projeto Salvo com Sucesso")        
+                        try:
+                            supabase.table("projeto").insert({
+                                "Descrição": nome_projeto,
+                                "Número Projeto": n_projeto,
+                                "Valor": valor_projeto
+                            }).execute()
+                            st.success("Projeto Salvo com Sucesso no Supabase!")
+                        except Exception as e:
+                            st.error(f"Erro ao salvar projeto: {e}")        
 
                 case "Emissão de Contratos":
-                    df_contrato_projeto = pd.read_csv("projeto.csv")
-                    contrato_projeto = st.selectbox("Projeto", df_contrato_projeto["Descrição"])
-                    empresa_contratante = st.selectbox("Empresa Contratante", ["DigiEvo Tech System"])
-                    cnpj_empresa_contratante = st.selectbox("CNPJ Contratante", ["11.111.111/1111-11"])
-                    df_fornecedor_contrato = pd.read_csv("fornecedor.csv")
-                    contrato_fornecedor = st.selectbox("Escolha o Fornecedor", df_fornecedor_contrato["Nome Fornecedor"])
-                    cnpj_empresa_fornecedor = st.selectbox("CNPJ Fornecedor", df_fornecedor_contrato["CNPJ"])
-                    contrato_objeto = st.text_area("Objeto do Contrato")
-                    valor_contrato = st.number_input("Valor Contrato")
-                    contrato_inicio=st.date_input("Data de Inicio")
-                    contrato_fim=st.date_input("Data de Conclusão")
-                    df_contrato = pd.DataFrame([{"Empresa Contratante":empresa_contratante, "CNPJ Contratante":cnpj_empresa_contratante, "CNPJ Fornecedor":cnpj_empresa_fornecedor,
-                    "Objeto":contrato_objeto, "Valor":valor_contrato, "Data Inicio": contrato_inicio, "Data Fim": contrato_fim, "Projeto":contrato_projeto}])
-                    if st.button("Salvar Contrato"):
-                        if os.path.exists("contrato.csv"):
-                            df_contrato.to_csv("contrato.csv", mode="a", header=False, index=False)
-                        else:
-                            df_contrato.to_csv("contrato.csv", index=False)
-                        st.success("Contrato Salvo com Sucesso")
-                    if st.button("Emitir Contrato PDF"):
-                        df_contrato_pdf = pd.read_csv("contrato.csv")
-                        contrato_pdf = df_contrato_pdf.iloc[-1]  # pega o último contrato salvo
+                    try:
+                        df_contrato_projeto = pd.DataFrame(supabase.table("projeto").select("*").execute().data)
+                        df_fornecedor_contrato = pd.DataFrame(supabase.table("fornecedor").select("*").execute().data)
 
-                        # cria o canvas
-                        c = canvas.Canvas("contrato.pdf", pagesize=A4)
-                        largura, altura = A4
+                        proj_lista = df_contrato_projeto["Descrição"].tolist() if not df_contrato_projeto.empty else []
+                        forn_lista = df_fornecedor_contrato["Nome Fornecedor"].tolist() if not df_fornecedor_contrato.empty else []
 
-                        # título
-                        c.setFont("Helvetica-Bold", 16)
-                        c.drawCentredString(largura/2, altura - 50, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
+                        contrato_projeto = st.selectbox("Projeto", proj_lista)
+                        empresa_contratante = st.selectbox("Empresa Contratante", ["DigiEvo Tech System"])
+                        cnpj_empresa_contratante = st.selectbox("CNPJ Contratante", ["11.111.111/1111-11"])
+                        contrato_fornecedor = st.selectbox("Escolha o Fornecedor", forn_lista)
+                        
+                        cnpj_forn = ""
+                        if not df_fornecedor_contrato.empty and contrato_fornecedor:
+                            match_f = df_fornecedor_contrato[df_fornecedor_contrato["Nome Fornecedor"] == contrato_fornecedor]
+                            if not match_f.empty and "CNPJ" in match_f.columns:
+                                cnpj_forn = match_f.iloc[0]["CNPJ"]
 
-                        c.setFont("Helvetica", 12)
-                        linha = altura - 100
-                        espaco = 20
+                        cnpj_empresa_fornecedor = st.text_input("CNPJ Fornecedor", value=cnpj_forn)
+                        contrato_objeto = st.text_area("Objeto do Contrato")
+                        valor_contrato = st.number_input("Valor Contrato")
+                        contrato_inicio = st.date_input("Data de Inicio")
+                        contrato_fim = st.date_input("Data de Conclusão")
 
-                        # dados principais
-                        c.drawString(50, linha, f"Projeto: {contrato_pdf['Projeto']}"); linha -= espaco
-                        c.drawString(50, linha, f"Empresa Contratante: {contrato_pdf['Empresa Contratante']}"); linha -= espaco
-                        c.drawString(50, linha, f"CNPJ Contratante: {contrato_pdf['CNPJ Contratante']}"); linha -= espaco
-                        c.drawString(50, linha, f"Fornecedor: {contrato_pdf['Fornecedor']}"); linha -= espaco
-                        c.drawString(50, linha, f"CNPJ Fornecedor: {contrato_pdf['CNPJ Fornecedor']}"); linha -= espaco
-                        c.drawString(50, linha, f"Objeto: {contrato_pdf['Objeto']}"); linha -= espaco
-                        c.drawString(50, linha, f"Valor: R$ {contrato_pdf['Valor']:.2f}"); linha -= espaco
-                        c.drawString(50, linha, f"Data de Início: {contrato_pdf['Data Inicio']}"); linha -= espaco
-                        c.drawString(50, linha, f"Data de Conclusão: {contrato_pdf['Data Fim']}"); linha -= espaco
+                        if st.button("Salvar Contrato"):
+                            supabase.table("contrato").insert({
+                                "Empresa Contratante": empresa_contratante,
+                                "CNPJ Contratante": cnpj_empresa_contratante,
+                                "Fornecedor": contrato_fornecedor,
+                                "CNPJ Fornecedor": cnpj_empresa_fornecedor,
+                                "Objeto": contrato_objeto,
+                                "Valor": valor_contrato,
+                                "Data Inicio": str(contrato_inicio),
+                                "Data Fim": str(contrato_fim),
+                                "Projeto": contrato_projeto
+                            }).execute()
+                            st.success("Contrato Salvo com Sucesso no Supabase!")
 
-                        # assinaturas
-                        linha -= 60
-                        c.drawString(50, linha, "________________________________________"); linha -= espaco
-                        c.drawString(50, linha, "Assinatura da Empresa Contratante")
+                        if st.button("Emitir Contrato PDF"):
+                            res_c = supabase.table("contrato").select("*").order("id", desc=True).limit(1).execute()
+                            if res_c.data:
+                                contrato_pdf = res_c.data[0]
+                                c = canvas.Canvas("contrato.pdf", pagesize=A4)
+                                largura, altura = A4
 
-                        linha -= 60
-                        c.drawString(50, linha, "________________________________________"); linha -= espaco
-                        c.drawString(50, linha, "Assinatura do Fornecedor")
-                        # salva o PDF
-                        c.save()
-                        st.success("Contrato emitido em PDF com sucesso!")
+                                c.setFont("Helvetica-Bold", 16)
+                                c.drawCentredString(largura/2, altura - 50, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
+
+                                c.setFont("Helvetica", 12)
+                                linha = altura - 100
+                                espaco = 20
+
+                                c.drawString(50, linha, f"Projeto: {contrato_pdf.get('Projeto', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"Empresa Contratante: {contrato_pdf.get('Empresa Contratante', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"CNPJ Contratante: {contrato_pdf.get('CNPJ Contratante', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"Fornecedor: {contrato_pdf.get('Fornecedor', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"CNPJ Fornecedor: {contrato_pdf.get('CNPJ Fornecedor', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"Objeto: {contrato_pdf.get('Objeto', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"Valor: R$ {contrato_pdf.get('Valor', 0):.2f}"); linha -= espaco
+                                c.drawString(50, linha, f"Data de Início: {contrato_pdf.get('Data Inicio', '')}"); linha -= espaco
+                                c.drawString(50, linha, f"Data de Conclusão: {contrato_pdf.get('Data Fim', '')}"); linha -= espaco
+
+                                linha -= 60
+                                c.drawString(50, linha, "________________________________________"); linha -= espaco
+                                c.drawString(50, linha, "Assinatura da Empresa Contratante")
+
+                                linha -= 60
+                                c.drawString(50, linha, "________________________________________"); linha -= espaco
+                                c.drawString(50, linha, "Assinatura do Fornecedor")
+                                c.save()
+                                st.success("Contrato emitido em PDF com sucesso!")
+                            else:
+                                st.error("Nenhum contrato encontrado no banco.")
+                    except Exception as e:
+                        st.error(f"Erro nos contratos: {e}")
+
         case "Desconectar": 
-          st.session_state["logado"]=False  
-          st.rerun()  
-
-  
+            st.session_state["logado"] = False  
+            st.rerun()
