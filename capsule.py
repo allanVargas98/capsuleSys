@@ -418,9 +418,10 @@ else:
                             df_editado = st.data_editor(df_filtrada)
 
                             if st.button("Salvar Cotação"):
-                                # Remove a coluna auxiliar para evitar erro de schema no Supabase
-                                if "Requisicao_Label" in df_editado.columns:
-                                    df_editado = df_editado.drop(columns=["Requisicao_Label"])
+                                # Remove colunas auxiliares e de ID para evitar conflito de chave primária no Supabase
+                                for col_remover in ["Requisicao_Label", "id"]:
+                                    if col_remover in df_editado.columns:
+                                        df_editado = df_editado.drop(columns=[col_remover])
 
                                 df_editado["Requisição"] = str(requisicao_compra)
                                 df_editado["Fornecedor"] = str(req_fornecedor)
