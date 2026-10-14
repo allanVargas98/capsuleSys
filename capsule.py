@@ -63,11 +63,9 @@ def tela_login():
         st.session_state["usuario"] = Usuario if Usuario else "admin"
         st.rerun()
 
-# Inicializa o estado se ainda não existir
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 
-# Controle de login
 if not st.session_state["logado"]:
     tela_login()
 else:
@@ -79,7 +77,7 @@ else:
                 res_c = supabase.table("fluxo_caixa").select("*").execute()
                 df_caixa = pd.DataFrame(res_c.data if res_c.data else [])
                 if not df_caixa.empty and "Valor" in df_caixa.columns:
-                    df_caixa["Valor"] = pd.to_numeric(df_caixa["Valor"])
+                    df_caixa["Valor"] = pd.to_numeric(df_caixa["Valor"], errors="coerce").fillna(0)
                     total_caixa = df_caixa["Valor"].sum()
                     st.metric(label="Fluxo de Caixa", value=f"R$ {total_caixa:,.2f}") 
                 else:
@@ -91,7 +89,7 @@ else:
                 res_cp = supabase.table("contas_a_pagar").select("*").execute()
                 df_contasp = pd.DataFrame(res_cp.data if res_cp.data else [])
                 if not df_contasp.empty and "Valor" in df_contasp.columns and "Status" in df_contasp.columns:
-                    df_contasp["Valor"] = pd.to_numeric(df_contasp["Valor"])
+                    df_contasp["Valor"] = pd.to_numeric(df_contasp["Valor"], errors="coerce").fillna(0)
                     df_abertas = df_contasp[df_contasp["Status"] == "Aberto"]
                     total_contasp = df_abertas["Valor"].sum()
                     st.metric(label="Contas a Pagar (Abertas)", value=f"R$ {total_contasp:,.2f}")
@@ -178,7 +176,7 @@ else:
                         try:
                             res_prod = supabase.table("produto").select("Codigo").order("Codigo", desc=True).limit(1).execute()
                             dados_ult = res_prod.data
-                            novo_codigo = (dados_ult[0]["Codigo"] + 1) if dados_ult and "Codigo" in dados_ult[0] else 1
+                            novo_codigo = (int(dados_ult[0]["Codigo"]) + 1) if dados_ult and dados_ult[0].get("Codigo") is not None else 1
                         except Exception:
                             novo_codigo = 1
 
@@ -189,22 +187,22 @@ else:
                                     "Codigo": novo_codigo,
                                     "Descrição Produto": descricao,
                                     "ean_produto": ean_produto,
-                                    "Preço Produto": preco_produto,
+                                    "Preço Produto": float(preco_produto),
                                     "Categoria": categoria_produto,
                                     "Sub-Categoria": subcategoria_produto,
-                                    "Quantidade Produto": quantidade_produto,
-                                    "Filial": nome_filial
+                                    "Quantidade Produto": int(quantidade_produto),
+                                    "Filial": str(nome_filial)
                                 })
                         else:
                             lista_produtos.append({
                                 "Codigo": novo_codigo,
                                 "Descrição Produto": descricao,
                                 "ean_produto": ean_produto,
-                                "Preço Produto": preco_produto,
+                                "Preço Produto": float(preco_produto),
                                 "Categoria": categoria_produto,
                                 "Sub-Categoria": subcategoria_produto,
-                                "Quantidade Produto": quantidade_produto,
-                                "Filial": filial_escolhida
+                                "Quantidade Produto": int(quantidade_produto),
+                                "Filial": str(filial_escolhida)
                             })
 
                         try:
@@ -267,8 +265,8 @@ else:
 
                         prod_lista = df_produtos["Descrição Produto"].unique().tolist() if not df_produtos.empty and "Descrição Produto" in df_produtos.columns else []
                         fil_lista = df_filial["Nome"].unique().tolist() if not df_filial.empty and "Nome" in df_filial.columns else []
-                        proj_desc = df_nome_projeto["Descrição"].tolist() if not df_nome_projeto.empty and "Descrição" in df_nome_projeto.columns else []
-                        proj_num = df_nome_projeto["Número Projeto"].tolist() if not df_nome_projeto.empty and "Número Projeto" in df_nome_projeto.columns else []
+                        proj_desc = df_nome_projeto["Descrição"].unique().tolist() if not df_nome_projeto.empty and "Descrição" in df_nome_projeto.columns else []
+                        proj_num = df_nome_projeto["Número Projeto"].unique().tolist() if not df_nome_projeto.empty and "Número Projeto" in df_nome_projeto.columns else []
 
                         produto_escolhido = st.selectbox("Produto", prod_lista)
                         quantidade = st.number_input("Quantidade", min_value=1)
@@ -282,10 +280,10 @@ else:
                         if st.button("Adicionar Produto"):
                             item = {
                                 "Produto": produto_escolhido,
-                                "Quantidade": quantidade,
+                                "Quantidade": int(quantidade),
                                 "Filial Requisitante": filial,
                                 "Nome Projeto": nome_projeto, 
-                                "N° Projeto": n_projeto
+                                "N° Projeto": str(n_projeto)
                             }
                             st.session_state.item_requisicao.append(item)
                             st.success(f"Produto {produto_escolhido} adicionado (Qtd: {quantidade})")
@@ -298,7 +296,7 @@ else:
                             try:
                                 res_req = supabase.table("requisicoes").select("Codigo").order("Codigo", desc=True).limit(1).execute()
                                 ult_req = res_req.data
-                                novo_codigo = (ult_req[0]["Codigo"] + 1) if ult_req and "Codigo" in ult_req[0] else 1
+                                novo_codigo = (int(ult_req[0]["Codigo"]) + 1) if ult_req and ult_req[0].get("Codigo") is not None else 1
                             except Exception:
                                 novo_codigo = 1
 
@@ -334,12 +332,12 @@ else:
                         if st.button("Salvar Ajuste"):
                             supabase.table("ajuste_estoque").insert({
                                 "Produto": ajuste_produto,
-                                "Quantidade": ajuste_quantidade,
+                                "Quantidade": int(ajuste_quantidade),
                                 "Motivo Ajuste": ajuste_motivos,
                                 "Filial": ajuste_filial
                             }).execute()
 
-                            supabase.table("produto").update({"Quantidade Produto": ajuste_quantidade}).eq("Descrição Produto", ajuste_produto).eq("Filial", ajuste_filial).execute()
+                            supabase.table("produto").update({"Quantidade Produto": int(ajuste_quantidade)}).eq("Descrição Produto", ajuste_produto).eq("Filial", ajuste_filial).execute()
                             st.success("Ajuste Realizado com Sucesso no Supabase!")
                     except Exception as e:
                         st.error(f"Erro no ajuste de estoque: {e}")
@@ -350,13 +348,13 @@ else:
                         res_v = supabase.table("vencedores").select("*").execute()
                         df_pedido = pd.DataFrame(res_v.data if res_v.data else [])
                         if not df_pedido.empty and "NumeroPedido" in df_pedido.columns and "Fornecedor" in df_pedido.columns:
-                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"]
+                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
                             pedido = st.selectbox("Selecione o Pedido para Recebimento", df_pedido["PedidoLabel"].unique().tolist())
 
-                            numero_pedido, fornecedor = pedido.split(" - ", 1)
+                            numero_pedido, fornecedor = str(pedido).split(" - ", 1)
                             df_itens_pedido = df_pedido[
                                 (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
-                                (df_pedido["Fornecedor"] == fornecedor)
+                                (df_pedido["Fornecedor"].astype(str) == fornecedor)
                             ]
 
                             st.write("Itens do Pedido:")
@@ -374,7 +372,7 @@ else:
                                     min_value=0,
                                     step=1
                                 )
-                                recebimentos[row["Produto"]] = qtd_recebida
+                                recebimentos[row["Produto"]] = int(qtd_recebida)
 
                             if st.button("Confirmar Recebimento"):
                                 for produto, qtd in recebimentos.items():
@@ -382,7 +380,8 @@ else:
                                         res_q = supabase.table("produto").select("id, Quantidade Produto").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).execute()
                                         if res_q.data:
                                             row_p = res_q.data[0]
-                                            novo_total = row_p["Quantidade Produto"] + qtd
+                                            qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
+                                            novo_total = qtd_atual + int(qtd)
                                             supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
                                 st.success(f"Estoque atualizado com sucesso na filial {filial_escolhida}!")
                         else:
@@ -404,23 +403,24 @@ else:
                         df_req_fornecedor = pd.DataFrame(res_f.data if res_f.data else [])
 
                         if not df_req_gestao.empty and not df_req_fornecedor.empty and "Codigo" in df_req_gestao.columns and "Nome Fornecedor" in df_req_fornecedor.columns:
-                            col_codigo = df_req_gestao["Codigo"].astype(str)
-                            col_projeto = df_req_gestao["Nome Projeto"].astype(str) if "Nome Projeto" in df_req_gestao.columns else ""
-                            df_req_gestao["Requisicao_Label"] = col_codigo + " - " + col_projeto
+                            # Blindagem contra NaNs e floats no Pandas
+                            df_req_gestao["Codigo"] = df_req_gestao["Codigo"].fillna(0).astype(str)
+                            df_req_gestao["Nome Projeto"] = df_req_gestao.get("Nome Projeto", "").fillna("").astype(str)
+                            df_req_gestao["Requisicao_Label"] = df_req_gestao["Codigo"] + " - " + df_req_gestao["Nome Projeto"]
 
                             requisicao_compra = st.selectbox("Requisição", df_req_gestao["Requisicao_Label"].unique().tolist())
                             req_fornecedor = st.selectbox("Escolha o Fornecedor", df_req_fornecedor["Nome Fornecedor"])
-                            codigo_selecionado = requisicao_compra.split(" - ")[0]
+                            codigo_selecionado = str(requisicao_compra).split(" - ")[0]
                             data_emissao = st.date_input("Data de Emissão do Pedido")
                             data_recebimento = st.date_input("Data de Recebimento do Pedido")
 
-                            df_filtrada = df_req_gestao[df_req_gestao["Codigo"].astype(str) == str(codigo_selecionado)].copy()
+                            df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado].copy()
                             df_filtrada["Preço Cotado"] = 0.0
                             df_editado = st.data_editor(df_filtrada)
 
                             if st.button("Salvar Cotação"):
-                                df_editado["Requisição"] = requisicao_compra
-                                df_editado["Fornecedor"] = req_fornecedor
+                                df_editado["Requisição"] = str(requisicao_compra)
+                                df_editado["Fornecedor"] = str(req_fornecedor)
                                 df_editado["Data Emissão"] = str(data_emissao)
                                 df_editado["Data Recebimento"] = str(data_recebimento)
                                 
@@ -463,24 +463,24 @@ else:
                                 for fornecedor, valor in linha.items():
                                     default = (fornecedor == fornecedor_min)
                                     vencedores[(produto, fornecedor)] = st.checkbox(
-                                        f"{fornecedor} - R$ {valor:.2f}", value=default, key=f"{produto}_{fornecedor}"
+                                        f"{fornecedor} - R$ {float(valor or 0):.2f}", value=default, key=f"{produto}_{fornecedor}"
                                     )
 
                             if st.button("Definir Vencedores"):
                                 try:
                                     res_v = supabase.table("vencedores").select("NumeroPedido").order("NumeroPedido", desc=True).limit(1).execute()
                                     ult_v = res_v.data
-                                    proximo_numero = (ult_v[0]["NumeroPedido"] + 1) if ult_v and "NumeroPedido" in ult_v[0] else 1
+                                    proximo_numero = (int(ult_v[0]["NumeroPedido"]) + 1) if ult_v and ult_v[0].get("NumeroPedido") is not None else 1
                                 except Exception:
                                     proximo_numero = 1
 
                                 selecionados = [
                                     {
-                                        "Produto": prod,
-                                        "Fornecedor": forn,
+                                        "Produto": str(prod),
+                                        "Fornecedor": str(forn),
                                         "Preço Cotado": float(tabela.loc[prod, forn]),
                                         "Selecionado": True,
-                                        "NumeroPedido": proximo_numero
+                                        "NumeroPedido": int(proximo_numero)
                                     }
                                     for (prod, forn), marcado in vencedores.items() if marcado
                                 ]
@@ -499,10 +499,10 @@ else:
                         res_v = supabase.table("vencedores").select("*").execute()
                         df_pedido = pd.DataFrame(res_v.data if res_v.data else [])
                         if not df_pedido.empty and "NumeroPedido" in df_pedido.columns and "Fornecedor" in df_pedido.columns:
-                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"]
+                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
                             pedido = st.selectbox("Selecione um Pedido de Compra", df_pedido["PedidoLabel"].unique().tolist())
 
-                            numero_pedido, fornecedor = pedido.split(" - ", 1)
+                            numero_pedido, fornecedor = str(pedido).split(" - ", 1)
 
                             buffer = io.BytesIO()
                             doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
@@ -521,9 +521,9 @@ else:
                             dados = [["Produto", "Fornecedor", "Preço Cotado"]]
                             for _, row in df_pedido[
                                 (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
-                                (df_pedido["Fornecedor"] == fornecedor)
+                                (df_pedido["Fornecedor"].astype(str) == fornecedor)
                             ].iterrows():
-                                dados.append([row["Produto"], row["Fornecedor"], f"R$ {row['Preço Cotado']:.2f}"])
+                                dados.append([row["Produto"], row["Fornecedor"], f"R$ {float(row['Preço Cotado'] or 0):.2f}"])
 
                             tabela_pdf = Table(dados, colWidths=[400, 250, 100])
                             tabela_pdf.setStyle(TableStyle([
@@ -559,7 +559,7 @@ else:
                     fluxo_caixa = st.number_input("Valor a Cadastrar")
                     if st.button("Salvar Valor"):
                         try:
-                            supabase.table("fluxo_caixa").insert({"Valor": fluxo_caixa}).execute()
+                            supabase.table("fluxo_caixa").insert({"Valor": float(fluxo_caixa)}).execute()
                             st.success("Valor Cadastrado com Sucesso no Supabase!")
                         except Exception as e:
                             st.error(f"Erro: {e}")
@@ -579,11 +579,11 @@ else:
 
                         if st.button("Salvar Fatura"):
                             supabase.table("contas_a_pagar").insert({
-                                "NF": nota_fiscal,
-                                "Fornecedor": recebedor,
-                                "Valor": valor,
+                                "NF": str(nota_fiscal),
+                                "Fornecedor": str(recebedor),
+                                "Valor": float(valor),
                                 "Vencimento": str(vencimento),
-                                "QTD Faturas": n_faturas,
+                                "QTD Faturas": str(n_faturas),
                                 "Status": "Aberto"
                             }).execute()
                             st.success("Fatura salva com sucesso no Supabase!")
@@ -594,7 +594,7 @@ else:
                             st.subheader("Faturas em Aberto")
                             faturas_abertas = df_pagar[df_pagar["Status"] == "Aberto"]
                             for i, row in faturas_abertas.iterrows():
-                                st.write(f"NF: {row.get('NF', '')} | Fornecedor: {row.get('Fornecedor', '')} | Valor: R$ {row.get('Valor', 0):,.2f} | Vencimento: {row.get('Vencimento', '')}")
+                                st.write(f"NF: {row.get('NF', '')} | Fornecedor: {row.get('Fornecedor', '')} | Valor: R$ {float(row.get('Valor', 0) or 0):,.2f} | Vencimento: {row.get('Vencimento', '')}")
                                 if st.button(f"Marcar como Paga - NF {row.get('NF', '')}", key=f"pagar_{row.get('NF', '')}_{i}"):
                                     supabase.table("contas_a_pagar").update({"Status": "Pago"}).eq("NF", row["NF"]).execute()
                                     st.success(f"Fatura {row.get('NF', '')} marcada como paga!")
@@ -617,11 +617,11 @@ else:
 
                         if st.button("Salvar Fatura Receber"):
                             supabase.table("contas_a_receber").insert({
-                                "Contrato": contrato,
-                                "Cliente": cliente,
-                                "Valor": valor,
+                                "Contrato": str(contrato),
+                                "Cliente": str(cliente),
+                                "Valor": float(valor),
                                 "Vencimento": str(vencimento),
-                                "QTD Faturas": n_faturas,
+                                "QTD Faturas": str(n_faturas),
                                 "Status": "Aberto"
                             }).execute()
                             st.success("Fatura salva com sucesso no Supabase!")
@@ -632,7 +632,7 @@ else:
                             st.subheader("Faturas em Aberto")
                             faturas_abertas = df_receber[df_receber["Status"] == "Aberto"]
                             for i, row in faturas_abertas.iterrows():
-                                st.write(f"Contrato: {row.get('Contrato', '')} | Cliente: {row.get('Cliente', '')} | Valor: R$ {row.get('Valor', 0):,.2f} | Vencimento: {row.get('Vencimento', '')}")
+                                st.write(f"Contrato: {row.get('Contrato', '')} | Cliente: {row.get('Cliente', '')} | Valor: R$ {float(row.get('Valor', 0) or 0):,.2f} | Vencimento: {row.get('Vencimento', '')}")
                                 if st.button(f"Marcar como Recebida - Contrato {row.get('Contrato', '')}", key=f"receber_{row.get('Contrato', '')}_{i}"):
                                     supabase.table("contas_a_receber").update({"Status": "Recebido"}).eq("Contrato", row["Contrato"]).execute()
                                     st.success(f"Fatura do contrato {row.get('Contrato', '')} marcada como recebida!")
@@ -682,7 +682,7 @@ else:
                                 supabase.table("projeto").insert({
                                     "Descrição": nome_projeto,
                                     "Número Projeto": n_projeto,
-                                    "Valor": valor_projeto
+                                    "Valor": float(valor_projeto)
                                 }).execute()
                                 st.success("Projeto Salvo com Sucesso no Supabase!")
                             except Exception as e:
@@ -718,15 +718,15 @@ else:
 
                         if st.button("Salvar Contrato"):
                             supabase.table("contrato").insert({
-                                "Empresa Contratante": empresa_contratante,
-                                "CNPJ Contratante": cnpj_empresa_contratante,
-                                "Fornecedor": contrato_fornecedor,
-                                "CNPJ Fornecedor": cnpj_empresa_fornecedor,
-                                "Objeto": contrato_objeto,
-                                "Valor": valor_contrato,
+                                "Empresa Contratante": str(empresa_contratante),
+                                "CNPJ Contratante": str(cnpj_empresa_contratante),
+                                "Fornecedor": str(contrato_fornecedor),
+                                "CNPJ Fornecedor": str(cnpj_empresa_fornecedor),
+                                "Objeto": str(contrato_objeto),
+                                "Valor": float(valor_contrato),
                                 "Data Inicio": str(contrato_inicio),
                                 "Data Fim": str(contrato_fim),
-                                "Projeto": contrato_projeto
+                                "Projeto": str(contrato_projeto)
                             }).execute()
                             st.success("Contrato Salvo com Sucesso no Supabase!")
 
@@ -750,7 +750,7 @@ else:
                                 c.drawString(50, linha, f"Fornecedor: {contrato_pdf.get('Fornecedor', '')}"); linha -= espaco
                                 c.drawString(50, linha, f"CNPJ Fornecedor: {contrato_pdf.get('CNPJ Fornecedor', '')}"); linha -= espaco
                                 c.drawString(50, linha, f"Objeto: {contrato_pdf.get('Objeto', '')}"); linha -= espaco
-                                c.drawString(50, linha, f"Valor: R$ {contrato_pdf.get('Valor', 0):,.2f}"); linha -= espaco
+                                c.drawString(50, linha, f"Valor: R$ {float(contrato_pdf.get('Valor', 0) or 0):,.2f}"); linha -= espaco
                                 c.drawString(50, linha, f"Data de Início: {contrato_pdf.get('Data Inicio', '')}"); linha -= espaco
                                 c.drawString(50, linha, f"Data de Conclusão: {contrato_pdf.get('Data Fim', '')}"); linha -= espaco
 
