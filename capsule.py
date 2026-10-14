@@ -403,7 +403,6 @@ else:
                         df_req_fornecedor = pd.DataFrame(res_f.data if res_f.data else [])
 
                         if not df_req_gestao.empty and not df_req_fornecedor.empty and "Codigo" in df_req_gestao.columns and "Nome Fornecedor" in df_req_fornecedor.columns:
-                            # Blindagem contra NaNs e floats no Pandas
                             df_req_gestao["Codigo"] = df_req_gestao["Codigo"].fillna(0).astype(str)
                             df_req_gestao["Nome Projeto"] = df_req_gestao.get("Nome Projeto", "").fillna("").astype(str)
                             df_req_gestao["Requisicao_Label"] = df_req_gestao["Codigo"] + " - " + df_req_gestao["Nome Projeto"]
@@ -419,6 +418,10 @@ else:
                             df_editado = st.data_editor(df_filtrada)
 
                             if st.button("Salvar Cotação"):
+                                # Remove a coluna auxiliar para evitar erro de schema no Supabase
+                                if "Requisicao_Label" in df_editado.columns:
+                                    df_editado = df_editado.drop(columns=["Requisicao_Label"])
+
                                 df_editado["Requisição"] = str(requisicao_compra)
                                 df_editado["Fornecedor"] = str(req_fornecedor)
                                 df_editado["Data Emissão"] = str(data_emissao)
