@@ -57,26 +57,26 @@ st.title("Capsule Sys")
 def tela_login():
     st.title("Login")
 
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
+    Usuario = st.text_input("Usuário")
+    Senha = st.text_input("Senha", type="password")
 
     if st.button("Entrar"):
         # Login padrão de Administrador Master
-        if usuario == "admin" and senha == "1234":
+        if Usuario == "admin" and Senha == "1234":
             st.success("Login realizado com sucesso!")
             st.session_state["logado"] = True
-            st.session_state["usuario"] = usuario
+            st.session_state["usuario"] = Usuario
             st.rerun()
         else:
             try:
                 # Busca o usuário no Supabase
-                response = supabase.table("usuarios").select("*").eq("Usuario", usuario).eq("Senha", senha).execute()
+                response = supabase.table("usuarios").select("*").eq("Usuario", Usuario).eq("Senha", Senha).execute()
                 dados_usuarios = response.data
 
                 if dados_usuarios and len(dados_usuarios) > 0:
                     st.success("Login realizado com sucesso!")
                     st.session_state["logado"] = True
-                    st.session_state["usuario"] = usuario
+                    st.session_state["usuario"] = Usuario
                     st.rerun()
                 else:
                     st.error("Usuário ou senha inválidos.")
