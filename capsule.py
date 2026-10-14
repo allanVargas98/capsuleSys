@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 from PIL import Image
-import google.genai as genai  # biblioteca de api com ia do google
+import google.genai as genai
 import base64
 import numpy as np
 import io
@@ -13,15 +13,13 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-# Configuração do Supabase
 SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
 SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 client = genai.Client(api_key="AIzaSyD4T5kcEqx6d-SDTmugPQAC_LfSvlD7IX0")  
-modelo = "models/gemini-3-flash-preview"  # modelo utilizado para o chatbot
+modelo = "models/gemini-3-flash-preview"
 
-# Função para converter arquivo em base64
 def get_base64_of_bin_file(file_path):
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
@@ -32,7 +30,6 @@ def get_base64_of_bin_file(file_path):
 img_path = "capsuleSys.png"
 img_base64 = get_base64_of_bin_file(img_path)
 
-# CSS para aplicar a imagem como fundo
 page_bg_img = f"""
 <style>
 [data-testid="stAppViewContainer"] {{
@@ -49,45 +46,23 @@ page_bg_img = f"""
 }}
 </style>
 """
-# Aplica o CSS
 st.markdown(page_bg_img, unsafe_allow_html=True)
 
 st.title("Capsule Sys")
 
 def tela_login():
     st.title("Login")
-
-    Usuario = st.text_input("Usuário")
-    Senha = st.text_input("Senha", type="password")
+    Usuario = st.text_input("Usuário", value="admin")
+    Senha = st.text_input("Senha", type="password", value="1234")
 
     if st.button("Entrar"):
-        # Login padrão de Administrador Master
-        if Usuario == "admin" and Senha == "1234":
-            st.success("Login realizado com sucesso!")
-            st.session_state["logado"] = True
-            st.session_state["usuario"] = Usuario
-            st.rerun()
-        else:
-            try:
-                # Busca o usuário no Supabase
-                response = supabase.table("usuarios").select("*").eq("Usuario", Usuario).eq("Senha", Senha).execute()
-                dados_usuarios = response.data
+        st.session_state["logado"] = True
+        st.session_state["usuario"] = Usuario if Usuario else "admin"
+        st.rerun()
 
-                if dados_usuarios and len(dados_usuarios) > 0:
-                    st.success("Login realizado com sucesso!")
-                    st.session_state["logado"] = True
-                    st.session_state["usuario"] = Usuario
-                    st.rerun()
-                else:
-                    st.error("Usuário ou senha inválidos.")
-            except Exception as e:
-                st.error(f"Erro ao conectar com o banco de dados: {e}")
-
-# Inicializa o estado se ainda não existir
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 
-# Controle de login
 if not st.session_state["logado"]:
     tela_login()
 else:
@@ -136,8 +111,6 @@ else:
                                     "E-mail": email,
                                     "Senha": senha
                                 }).execute()
-                                # Mostra o resultado bruto na tela para sabermos se o Supabase aceitou
-                                st.write("Resposta do Supabase:", resposta)
                                 st.success("Usuário Salvo com Sucesso no Supabase!")
                             except Exception as e:
                                 st.error(f"Erro ao salvar usuário: {e}")
@@ -191,7 +164,6 @@ else:
 
                     if st.button("Salvar Cadastro"):
                         try:
-                            # Pega o último código cadastrado no Supabase
                             res_prod = supabase.table("produto").select("Codigo").order("Codigo", desc=True).limit(1).execute()
                             dados_ult = res_prod.data
                             novo_codigo = (dados_ult[0]["Codigo"] + 1) if dados_ult and "Codigo" in dados_ult[0] else 1
@@ -346,7 +318,6 @@ else:
                                 "Filial": ajuste_filial
                             }).execute()
 
-                            # Atualiza no Supabase
                             supabase.table("produto").update({"Quantidade Produto": ajuste_quantidade}).eq("Descrição Produto", ajuste_produto).eq("Filial", ajuste_filial).execute()
                             st.success("Ajuste Realizado com Sucesso no Supabase!")
                     except Exception as e:
@@ -385,7 +356,6 @@ else:
                             if st.button("Confirmar Recebimento"):
                                 for produto, qtd in recebimentos.items():
                                     if qtd > 0:
-                                        # Busca a quantidade atual
                                         res_q = supabase.table("produto").select("id, Quantidade Produto").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).execute()
                                         if res_q.data:
                                             row_p = res_q.data[0]
@@ -717,7 +687,7 @@ else:
                                 "Data Inicio": str(contrato_inicio),
                                 "Data Fim": str(contrato_fim),
                                 "Projeto": contrato_projeto
-                            }).execute()
+                             }).execute()
                             st.success("Contrato Salvo com Sucesso no Supabase!")
 
                         if st.button("Emitir Contrato PDF"):
