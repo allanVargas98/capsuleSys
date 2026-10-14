@@ -14,8 +14,8 @@ from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
 # Configuração do Supabase
-SUPABASE_URL = "https://capsulesys.supabase.co"
-SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"  
+SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
+SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 client = genai.Client(api_key="AIzaSyD4T5kcEqx6d-SDTmugPQAC_LfSvlD7IX0")  
