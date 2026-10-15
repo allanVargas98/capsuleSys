@@ -97,7 +97,7 @@ else:
     
     st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
 
-    # Se for o utilizador Master (DigiEvo), permite alternar a empresa ativa na barra lateral
+    # Se for o usuário Master (DigiEvo), permite alternar a empresa ativa na barra lateral
     if is_master or usuario_atual == "admin":
         try:
             res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
@@ -108,7 +108,11 @@ else:
         if "DigiEvo Business LTDA" not in lista_empresas_clientes:
             lista_empresas_clientes.insert(0, "DigiEvo Business LTDA")
 
-        empresa_atual = st.sidebar.selectbox("🏢 Empresa (Alternar Cliente)", lista_empresas_clientes, index=lista_empresas_clientes.index(st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")) if st.session_state.get("empresa_ativa") in lista_empresas_clientes else 0)
+        empresa_atual = st.sidebar.selectbox(
+            "🏢 Empresa (Alternar Cliente)", 
+            lista_empresas_clientes, 
+            index=lista_empresas_clientes.index(st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")) if st.session_state.get("empresa_ativa") in lista_empresas_clientes else 0
+        )
         st.session_state["empresa_ativa"] = empresa_atual
     else:
         empresa_atual = st.session_state.get("empresa_ativa", "Matriz Padrão")
@@ -622,11 +626,21 @@ else:
                     try:
                         res_v = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
                         df_pedido = pd.DataFrame(res_v.data if res_v.data else [])
+                        
                         if not df_pedido.empty and "NumeroPedido" in df_pedido.columns and "Fornecedor" in df_pedido.columns:
                             df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
                             pedido = st.selectbox("Selecione um Pedido de Compra", df_pedido["PedidoLabel"].unique().tolist())
 
                             numero_pedido, fornecedor = str(pedido).split(" - ", 1)
+
+                            # Buscar dados da empresa logada (Tenant) para exibir no PDF
+                            cnpj_tenant = "CNPJ não cadastrado"
+                            try:
+                                res_emp_info = supabase.table("clientes_empresas").select("*").eq("Nome Empresa", empresa_atual).execute()
+                                if res_emp_info.data:
+                                    cnpj_tenant = res_emp_info.data[0].get("CNPJ", "CNPJ não cadastrado")
+                            except Exception:
+                                pass
 
                             buffer = io.BytesIO()
                             doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
@@ -635,10 +649,16 @@ else:
                             if os.path.exists("capsuleSys.png"):
                                 logo = RLImage("capsuleSys.png", width=120, height=50)
                                 elementos.append(logo)
-                                elementos.append(Spacer(1, 20))
+                                elementos.append(Spacer(1, 10))
 
                             estilos = getSampleStyleSheet()
-                            titulo = Paragraph(f"Pedido de Compra {pedido}", estilos["Title"])
+                            
+                            # Cabeçalho com os dados do Tenant (Cliente)
+                            elementos.append(Paragraph(f"<b>{empresa_atual}</b>", estilos["Heading2"]))
+                            elementos.append(Paragraph(f"CNPJ: {cnpj_tenant}", estilos["Normal"]))
+                            elementos.append(Spacer(1, 15))
+
+                            titulo = Paragraph(f"<b>Pedido de Compra #{numero_pedido}</b> - Fornecedor: {fornecedor}", estilos["Title"])
                             elementos.append(titulo)
                             elementos.append(Spacer(1, 20))
 
@@ -647,7 +667,7 @@ else:
                                 (df_pedido["NumeroPedido"].astype(str) == numero_pedido) &
                                 (df_pedido["Fornecedor"] == fornecedor)
                             ].iterrows():
-                                dados.append([row["Produto"], row["Fornecedor"], f"R$ {float(row['Preço Cotado'] or 0):.2f}"])
+                                dados.append([row["Produto"], row["Fornecedor"], f"R$ {float(row['Preço Cotado'] or 0):,.2f}"])
 
                             tabela_pdf = Table(dados, colWidths=[400, 250, 100])
                             tabela_pdf.setStyle(TableStyle([
