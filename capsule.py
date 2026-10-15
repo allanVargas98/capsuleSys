@@ -61,12 +61,12 @@ def tela_login():
         if usuario_input == "admin" and senha_input == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
-            st.session_state["empresa_ativa"] = "Matriz Padrão"
+            st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
+            st.session_state["is_master"] = True
             st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas"]
             st.rerun()
         else:
             try:
-                # Consulta usuario e senha no Supabase
                 res_u = supabase.table("usuarios").select("*").eq("Usuario", usuario_input).eq("Senha", senha_input).execute()
                 dados_u = res_u.data
                 
@@ -78,6 +78,7 @@ def tela_login():
                     st.session_state["logado"] = True
                     st.session_state["usuario"] = u_info.get("Usuario")
                     st.session_state["empresa_ativa"] = empresa_vinculada
+                    st.session_state["is_master"] = False
                     st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
                     st.rerun()
                 else:
@@ -91,17 +92,32 @@ if "logado" not in st.session_state:
 if not st.session_state["logado"]:
     tela_login()
 else:
-    empresa_atual = st.session_state.get("empresa_ativa", "Matriz Padrão")
     usuario_atual = st.session_state.get("usuario", "admin")
+    is_master = st.session_state.get("is_master", False)
     
     st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
-    st.sidebar.markdown(f"🏢 **Empresa:** `{empresa_atual}`")
-    
+
+    # Se for o utilizador Master (DigiEvo), permite alternar a empresa ativa na barra lateral
+    if is_master or usuario_atual == "admin":
+        try:
+            res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
+            lista_empresas_clientes = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["DigiEvo Business LTDA"]
+        except Exception:
+            lista_empresas_clientes = ["DigiEvo Business LTDA"]
+        
+        if "DigiEvo Business LTDA" not in lista_empresas_clientes:
+            lista_empresas_clientes.insert(0, "DigiEvo Business LTDA")
+
+        empresa_atual = st.sidebar.selectbox("🏢 Empresa (Alternar Cliente)", lista_empresas_clientes, index=lista_empresas_clientes.index(st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")) if st.session_state.get("empresa_ativa") in lista_empresas_clientes else 0)
+        st.session_state["empresa_ativa"] = empresa_atual
+    else:
+        empresa_atual = st.session_state.get("empresa_ativa", "Matriz Padrão")
+        st.sidebar.markdown(f"🏢 **Empresa:** `{empresa_atual}`")
+
     todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
     
-    # Se for o admin mestre, libera o menu de Gestao de Empresas
-    if usuario_atual == "admin":
+    if is_master or usuario_atual == "admin":
         modulos_permitidos = todos_modulos
     else:
         modulos_permitidos = [m for m in todos_modulos if m in permissoes_usuario or m == "Desconectar"]
@@ -171,15 +187,13 @@ else:
                 case "Cadastro de Usuário":    
                     st.write("Cadastro de Usuário e Permissões")
                     
-                    # Buscar lista de empresas ativas para vincular o novo usuario
                     try:
                         res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
-                        lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["Matriz Padrão"]
+                        lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["DigiEvo Business LTDA"]
                     except Exception:
-                        lista_emp_cadastradas = ["Matriz Padrão"]
+                        lista_emp_cadastradas = ["DigiEvo Business LTDA"]
 
-                    # Se não for o admin master, trava o cadastro de usuário na empresa do usuário logado
-                    if usuario_atual != "admin":
+                    if not is_master and usuario_atual != "admin":
                         lista_emp_cadastradas = [empresa_atual]
 
                     with st.form("form_usuario"):
