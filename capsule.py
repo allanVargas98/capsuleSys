@@ -71,23 +71,34 @@ def tela_login():
             st.rerun()
         else:
             try:
-                # Consulta no Supabase para outros usuários cadastrados
-                res_u = supabase.table("usuarios").select("*").eq("Usuario", u_limpo).eq("Senha", s_limpa).execute()
+                res_u = supabase.table("usuarios").select("*").eq("Usuario", u_limpo).execute()
                 dados_u = res_u.data
                 
                 if dados_u:
                     u_info = dados_u[0]
-                    empresa_vinculada = u_info.get("Empresa", "Matriz Padrão")
-                    modulos_str = u_info.get("ModulosPermitidos", "")
                     
-                    st.session_state["logado"] = True
-                    st.session_state["usuario"] = u_info.get("Usuario")
-                    st.session_state["empresa_ativa"] = empresa_vinculada
-                    st.session_state["is_master"] = False
-                    st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
-                    st.rerun()
+                    # Verifica se o utilizador está inativo
+                    status_usuario = u_info.get("Status", "Ativo")
+                    if status_usuario == "Inativo":
+                        st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
+                        return
+
+                    senha_cadastrada = str(u_info.get("Senha", "")).strip()
+                    
+                    if s_limpa == senha_cadastrada:
+                        empresa_vinculada = u_info.get("Empresa", "Matriz Padrão")
+                        modulos_str = u_info.get("ModulosPermitidos", "")
+                        
+                        st.session_state["logado"] = True
+                        st.session_state["usuario"] = u_info.get("Usuario")
+                        st.session_state["empresa_ativa"] = empresa_vinculada
+                        st.session_state["is_master"] = (u_info.get("Usuario") == "admin")
+                        st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
+                        st.rerun()
+                    else:
+                        st.error("Senha incorreta para este usuário.")
                 else:
-                    st.error("Usuário ou senha inválidos.")
+                    st.error("Usuário não encontrado no banco de dados.")
             except Exception as e:
                 st.error(f"Erro ao autenticar: {e}")
 
@@ -102,7 +113,6 @@ else:
     
     st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
 
-    # Se for o usuário Master (DigiEvo / admin), permite alternar a empresa ativa na barra lateral
     if is_master or usuario_atual == "admin":
         try:
             res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
@@ -194,8 +204,10 @@ else:
             cadastro_opcao = st.radio("Escolha uma Opção:", ["Cadastro de Usuário", "Cadastro de Fornecedor", "Cadastro de Produto", "Cadastro Filial"], horizontal=True)
             match cadastro_opcao:
                 case "Cadastro de Usuário":    
-                    st.write("Cadastro de Usuário e Permissões")
+                    st.write("Gestão de Utilizadores e Permissões")
                     
+                    sub_aba_usuario = st.radio("Ação de Utilizador", ["Novo Utilizador", "Editar / Ativar-Inativar Utilizadores"], horizontal=True)
+
                     try:
                         res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
                         lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["DigiEvo Business LTDA"]
@@ -205,46 +217,134 @@ else:
                     if not is_master and usuario_atual != "admin":
                         lista_emp_cadastradas = [empresa_atual]
 
-                    with st.form("form_usuario"):
-                        empresa_vinc = st.selectbox("Empresa do Usuário", lista_emp_cadastradas)
-                        usuario = st.text_input("Usuário")
-                        email = st.text_input("E-mail")
-                        senha = st.text_input("Senha", type="password")
-                        
-                        st.write("Módulos Permitidos para Acesso:")
-                        p_graficos = st.checkbox("Gráficos Gerenciais", value=True)
-                        p_cadastros = st.checkbox("Cadastros", value=True)
-                        p_almox = st.checkbox("Almoxarifado", value=True)
-                        p_compras = st.checkbox("Compras", value=True)
-                        p_gerencial = st.checkbox("Gerencial (Financeiro)", value=True)
-                        p_ia = st.checkbox("ATLAS IA", value=True)
-                        p_contratos = st.checkbox("Contratos", value=True)
+                    if sub_aba_usuario == "Novo Utilizador":
+                        with st.form("form_usuario"):
+                            empresa_vinc = st.selectbox("Empresa do Utilizador", lista_emp_cadastradas)
+                            usuario = st.text_input("Usuário")
+                            email = st.text_input("E-mail")
+                            senha = st.text_input("Senha", type="password")
+                            status_inicial = st.selectbox("Status", ["Ativo", "Inativo"])
+                            
+                            st.write("Módulos Permitidos para Acesso:")
+                            p_graficos = st.checkbox("Gráficos Gerenciais", value=True)
+                            p_cadastros = st.checkbox("Cadastros", value=True)
+                            p_almox = st.checkbox("Almoxarifado", value=True)
+                            p_compras = st.checkbox("Compras", value=True)
+                            p_gerencial = st.checkbox("Gerencial (Financeiro)", value=True)
+                            p_ia = st.checkbox("ATLAS IA", value=True)
+                            p_contratos = st.checkbox("Contratos", value=True)
 
-                        submitted = st.form_submit_button("Salvar Usuário")
-                        if submitted:
-                            if usuario and email and senha:
-                                modulos_escolhidos = []
-                                if p_graficos: modulos_escolhidos.append("Gráficos Gerenciais")
-                                if p_cadastros: modulos_escolhidos.append("Cadastros")
-                                if p_almox: modulos_escolhidos.append("Almox")
-                                if p_compras: modulos_escolhidos.append("Compras")
-                                if p_gerencial: modulos_escolhidos.append("Gerencial")
-                                if p_ia: modulos_escolhidos.append("IA")
-                                if p_contratos: modulos_escolhidos.append("Contratos")
+                            submitted = st.form_submit_button("Salvar Utilizador")
+                            if submitted:
+                                if usuario and email and senha:
+                                    modulos_escolhidos = []
+                                    if p_graficos: modulos_escolhidos.append("Gráficos Gerenciais")
+                                    if p_cadastros: modulos_escolhidos.append("Cadastros")
+                                    if p_almox: modulos_escolhidos.append("Almox")
+                                    if p_compras: modulos_escolhidos.append("Compras")
+                                    if p_gerencial: modulos_escolhidos.append("Gerencial")
+                                    if p_ia: modulos_escolhidos.append("IA")
+                                    if p_contratos: modulos_escolhidos.append("Contratos")
 
-                                try:
-                                    supabase.table("usuarios").insert({
-                                        "Usuario": usuario.strip(),
-                                        "E-mail": email.strip(),
-                                        "Senha": senha.strip(),
-                                        "Empresa": empresa_vinc,
-                                        "ModulosPermitidos": ",".join(modulos_escolhidos)
-                                    }).execute()
-                                    st.success(f"Usuário {usuario} vinculado à empresa '{empresa_vinc}' com sucesso!")
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar usuário: {e}")
+                                    try:
+                                        supabase.table("usuarios").insert({
+                                            "Usuario": usuario.strip(),
+                                            "E-mail": email.strip(),
+                                            "Senha": senha.strip(),
+                                            "Empresa": empresa_vinc,
+                                            "ModulosPermitidos": ",".join(modulos_escolhidos),
+                                            "Status": status_inicial
+                                        }).execute()
+                                        st.success(f"Utilizador {usuario} criado com sucesso!")
+                                    except Exception as e:
+                                        st.error(f"Erro ao salvar utilizizador: {e}")
+                                else:
+                                    st.warning("Preencha todos os campos obrigatórios.")
+                    else:
+                        st.subheader("Editar ou Alterar Estado de Utilizadores")
+                        try:
+                            res_todos_u = supabase.table("usuarios").select("*").execute()
+                            lista_u_dados = res_todos_u.data if res_todos_u.data else []
+                            
+                            if lista_u_dados:
+                                nomes_u = [u["Usuario"] for u in lista_u_dados]
+                                u_selecionado_nome = st.selectbox("Selecione o Utilizador para Editar", nomes_u)
+                                
+                                u_obj = next((item for item in lista_u_dados if item["Usuario"] == u_selecionado_nome), None)
+                                
+                                if u_obj:
+                                    with st.form("form_edicao_usuario"):
+                                        novo_email = st.text_input("E-mail", value=u_obj.get("E-mail", ""))
+                                        nova_senha = st.text_input("Senha", value=u_obj.get("Senha", ""), type="password")
+                                        
+                                        idx_emp = lista_emp_cadastradas.index(u_obj.get("Empresa")) if u_obj.get("Empresa") in lista_emp_cadastradas else 0
+                                        nova_empresa = st.selectbox("Empresa", lista_emp_cadastradas, index=idx_emp)
+                                        
+                                        status_atual_db = u_obj.get("Status", "Ativo")
+                                        idx_status = 0 if status_atual_db == "Ativo" else 1
+                                        novo_status = st.selectbox("Status", ["Ativo", "Inativo"], index=idx_status)
+
+                                        mods_atuais = str(u_obj.get("ModulosPermitidos", "")).split(",")
+                                        
+                                        st.write("Módulos Permitidos:")
+                                        ed_p_graficos = st.checkbox("Gráficos Gerenciais", value=("Gráficos Gerenciais" in mods_atuais))
+                                        ed_p_cadastros = st.checkbox("Cadastros", value=("Cadastros" in mods_atuais))
+                                        ed_p_almox = st.checkbox("Almoxarifado", value=("Almox" in mods_atuais))
+                                        ed_p_compras = st.checkbox("Compras", value=("Compras" in mods_atuais))
+                                        ed_p_gerencial = st.checkbox("Gerencial (Financeiro)", value=("Gerencial" in mods_atuais))
+                                        ed_p_ia = st.checkbox("ATLAS IA", value=("IA" in mods_atuais))
+                                        ed_p_contratos = st.checkbox("Contratos", value=("Contratos" in mods_atuais))
+
+                                        btn_atualizar = st.form_submit_button("Atualizar Utilizador")
+                                        if btn_atualizar:
+                                            modulos_novos = []
+                                            if ed_p_graficos: modulos_novos.append("Gráficos Gerenciais")
+                                            if ed_p_cadastros: modulos_novos.append("Cadastros")
+                                            if ed_p_almox: modulos_novos.append("Almox")
+                                            if ed_p_compras: modulos_novos.append("Compras")
+                                            if ed_p_gerencial: modulos_novos.append("Gerencial")
+                                            if ed_p_ia: modulos_novos.append("IA")
+                                            if ed_p_contratos: modulos_novos.append("Contratos")
+
+                                            try:
+                                                supabase.table("usuarios").update({
+                                                    "E-mail": novo_email.strip(),
+                                                    "Senha": nova_senha.strip(),
+                                                    "Empresa": nova_empresa,
+                                                    "ModulosPermitidos": ",".join(modulos_novos),
+                                                    "Status": novo_status
+                                                }).eq("id", u_obj["id"]).execute()
+                                                st.success(f"Utilizador '{u_selecionado_nome}' atualizado com sucesso! Estado atual: {novo_status}")
+                                            except Exception as err:
+                                                st.error(f"Erro ao atualizar: {err}")
                             else:
-                                st.warning("Preencha todos os campos obrigatórios.")
+                                st.info("Nenhum utilizador encontrado.")
+                        except Exception as ex:
+                            st.error(f"Erro ao carregar utilizadores: {ex}")
+
+                    # --- TABELA DE CONSULTA DE UTILIZADORES ---
+                    st.divider()
+                    st.subheader("👥 Lista de Utilizadores Registados")
+                    try:
+                        if is_master or usuario_atual == "admin":
+                            res_u_cad = supabase.table("usuarios").select("Usuario, E-mail, Empresa, Status, ModulosPermitidos").execute()
+                        else:
+                            res_u_cad = supabase.table("usuarios").select("Usuario, E-mail, Empresa, Status, ModulosPermitidos").eq("Empresa", empresa_atual).execute()
+                        
+                        df_u_cad = pd.DataFrame(res_u_cad.data if res_u_cad.data else [])
+                        if not df_u_cad.empty:
+                            df_u_cad.rename(columns={
+                                "Usuario": "Utilizador",
+                                "E-mail": "E-mail",
+                                "Empresa": "Empresa / Cliente",
+                                "Status": "Estado",
+                                "ModulosPermitidos": "Módulos Acessíveis"
+                            }, inplace=True)
+                            st.dataframe(df_u_cad, use_container_width=True)
+                        else:
+                            st.info("Nenhum utilizador registado.")
+                    except Exception as e:
+                        st.error(f"Erro ao listar utilizadores: {e}")
 
                 case "Cadastro de Fornecedor":
                     st.write("Cadastro de Fornecedor")
