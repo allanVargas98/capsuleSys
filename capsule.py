@@ -49,39 +49,41 @@ page_bg_img = f"""
 """
 st.markdown(page_bg_img, unsafe_allow_html=True)
 
-st.title("Capsule Sys - Multiempresa")
+st.title("Capsule Sys")
 
 def tela_login():
-    st.title("Login / Seleção de Empresa")
+    st.title("Login de Acesso")
     
-    # Buscar lista de empresas cadastradas para selecionar o tenant
-    try:
-        res_emp = supabase.table("clientes_empresas").select("*").execute()
-        df_emp = pd.DataFrame(res_emp.data if res_emp.data else [])
-        empresas_lista = df_emp["Nome Empresa"].tolist() if not df_emp.empty and "Nome Empresa" in df_emp.columns else ["Matriz Padrão"]
-    except Exception:
-        empresas_lista = ["Matriz Padrão"]
-
-    empresa_selecionada = st.selectbox("Empresa / Cliente", empresas_lista)
-    usuario = st.text_input("Usuário", value="admin")
-    senha = st.text_input("Senha", type="password", value="1234")
+    usuario_input = st.text_input("Usuário", value="admin")
+    senha_input = st.text_input("Senha", type="password", value="1234")
 
     if st.button("Entrar"):
-        st.session_state["logado"] = True
-        st.session_state["usuario"] = usuario if usuario else "admin"
-        st.session_state["empresa_ativa"] = empresa_selecionada
-        
-        # Buscar permissões do usuário no banco se existir
-        try:
-            res_u = supabase.table("usuarios").select("*").eq("Usuario", usuario).eq("Empresa", empresa_selecionada).execute()
-            if res_u.data:
-                st.session_state["permissoes"] = res_u.data[0].get("ModulosPermitidos", "").split(",")
-            else:
-                st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
-        except Exception:
-            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
-
-        st.rerun()
+        if usuario_input == "admin" and senha_input == "1234":
+            st.session_state["logado"] = True
+            st.session_state["usuario"] = "admin"
+            st.session_state["empresa_ativa"] = "Matriz Padrão"
+            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas"]
+            st.rerun()
+        else:
+            try:
+                # Consulta usuario e senha no Supabase
+                res_u = supabase.table("usuarios").select("*").eq("Usuario", usuario_input).eq("Senha", senha_input).execute()
+                dados_u = res_u.data
+                
+                if dados_u:
+                    u_info = dados_u[0]
+                    empresa_vinculada = u_info.get("Empresa", "Matriz Padrão")
+                    modulos_str = u_info.get("ModulosPermitidos", "")
+                    
+                    st.session_state["logado"] = True
+                    st.session_state["usuario"] = u_info.get("Usuario")
+                    st.session_state["empresa_ativa"] = empresa_vinculada
+                    st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha inválidos.")
+            except Exception as e:
+                st.error(f"Erro ao autenticar: {e}")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
@@ -90,19 +92,25 @@ if not st.session_state["logado"]:
     tela_login()
 else:
     empresa_atual = st.session_state.get("empresa_ativa", "Matriz Padrão")
+    usuario_atual = st.session_state.get("usuario", "admin")
+    
+    st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
     st.sidebar.markdown(f"🏢 **Empresa:** `{empresa_atual}`")
     
-    # Módulos disponíveis filtrados pelas permissões do usuário
     todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Desconectar"]
-    permissoes_usuario = st.session_state.get("permissoes", todos_modulos)
+    permissoes_usuario = st.session_state.get("permissoes", [])
     
-    modulos_permitidos = [m for m in todos_modulos if m in permissoes_usuario or m in ["Desconectar", "Gestão Empresas"]]
+    # Se for o admin mestre, libera o menu de Gestao de Empresas
+    if usuario_atual == "admin":
+        modulos_permitidos = todos_modulos
+    else:
+        modulos_permitidos = [m for m in todos_modulos if m in permissoes_usuario or m == "Desconectar"]
 
     menu = st.sidebar.radio("Ferramentas", modulos_permitidos)
 
     match menu:
         case "Gestão Empresas":
-            st.write("Cadastro de Clientes / Empresas (Multi-tenancy)")
+            st.write("Cadastro de Clientes / Empresas (Tenants)")
             with st.form("form_cliente_empresa"):
                 nome_empresa = st.text_input("Nome da Empresa / Cliente")
                 cnpj_emp = st.text_input("CNPJ da Empresa")
@@ -112,7 +120,7 @@ else:
                     try:
                         supabase.table("clientes_empresas").insert({
                             "Nome Empresa": nome_empresa,
-                            "CNPJ": cnpj_empj if 'cnpj_empj' in locals() else cnpj_emp,
+                            "CNPJ": cnpj_emp,
                             "Plano": plano,
                             "Status": "Ativo"
                         }).execute()
@@ -162,12 +170,25 @@ else:
             match cadastro_opcao:
                 case "Cadastro de Usuário":    
                     st.write("Cadastro de Usuário e Permissões")
+                    
+                    # Buscar lista de empresas ativas para vincular o novo usuario
+                    try:
+                        res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
+                        lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["Matriz Padrão"]
+                    except Exception:
+                        lista_emp_cadastradas = ["Matriz Padrão"]
+
+                    # Se não for o admin master, trava o cadastro de usuário na empresa do usuário logado
+                    if usuario_atual != "admin":
+                        lista_emp_cadastradas = [empresa_atual]
+
                     with st.form("form_usuario"):
+                        empresa_vinc = st.selectbox("Empresa do Usuário", lista_emp_cadastradas)
                         usuario = st.text_input("Usuário")
                         email = st.text_input("E-mail")
                         senha = st.text_input("Senha", type="password")
                         
-                        st.write("Permissões de Acesso aos Módulos:")
+                        st.write("Módulos Permitidos para Acesso:")
                         p_graficos = st.checkbox("Gráficos Gerenciais", value=True)
                         p_cadastros = st.checkbox("Cadastros", value=True)
                         p_almox = st.checkbox("Almoxarifado", value=True)
@@ -193,10 +214,10 @@ else:
                                         "Usuario": usuario,
                                         "E-mail": email,
                                         "Senha": senha,
-                                        "Empresa": empresa_atual,
+                                        "Empresa": empresa_vinc,
                                         "ModulosPermitidos": ",".join(modulos_escolhidos)
                                     }).execute()
-                                    st.success("Usuário e permissões salvos com sucesso!")
+                                    st.success(f"Usuário {usuario} vinculado à empresa '{empresa_vinc}' com sucesso!")
                                 except Exception as e:
                                     st.error(f"Erro ao salvar usuário: {e}")
                             else:
