@@ -75,24 +75,29 @@ def tela_login():
                 dados_u = res_u.data
                 
                 if dados_u:
-                    u_info = dados_u[0]
-                    
-                    # Verifica se o utilizador está inativo
-                    status_usuario = u_info.get("Status", "Ativo")
-                    if status_usuario == "Inativo":
-                        st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
-                        return
+                    login_sucesso = False
+                    u_info_valido = None
 
-                    senha_cadastrada = str(u_info.get("Senha", "")).strip()
-                    
-                    if s_limpa == senha_cadastrada:
-                        empresa_vinculada = u_info.get("Empresa", "Matriz Padrão")
-                        modulos_str = u_info.get("ModulosPermitidos", "")
+                    for u_info in dados_u:
+                        status_usuario = u_info.get("Status", "Ativo")
+                        senha_cadastrada = str(u_info.get("Senha", "")).strip()
+                        
+                        if status_usuario == "Ativo" and s_limpa == senha_cadastrada:
+                            login_sucesso = True
+                            u_info_valido = u_info
+                            break
+                        elif status_usuario == "Inativo" and s_limpa == senha_cadastrada:
+                            st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
+                            return
+
+                    if login_sucesso and u_info_valido:
+                        empresa_vinculada = u_info_valido.get("Empresa", "Matriz Padrão")
+                        modulos_str = u_info_valido.get("ModulosPermitidos", "")
                         
                         st.session_state["logado"] = True
-                        st.session_state["usuario"] = u_info.get("Usuario")
+                        st.session_state["usuario"] = u_info_valido.get("Usuario")
                         st.session_state["empresa_ativa"] = empresa_vinculada
-                        st.session_state["is_master"] = (u_info.get("Usuario") == "admin")
+                        st.session_state["is_master"] = (u_info_valido.get("Usuario") == "admin")
                         st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
                         st.rerun()
                     else:
@@ -257,7 +262,7 @@ else:
                                         }).execute()
                                         st.success(f"Utilizador {usuario} criado com sucesso!")
                                     except Exception as e:
-                                        st.error(f"Erro ao salvar utilizizador: {e}")
+                                        st.error(f"Erro ao salvar utilizador: {e}")
                                 else:
                                     st.warning("Preencha todos os campos obrigatórios.")
                     else:
