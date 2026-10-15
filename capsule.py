@@ -58,7 +58,11 @@ def tela_login():
     senha_input = st.text_input("Senha", type="password", value="1234")
 
     if st.button("Entrar"):
-        if usuario_input == "admin" and senha_input == "1234":
+        u_limpo = usuario_input.strip()
+        s_limpa = senha_input.strip()
+
+        # Login Master Padrão (Super Admin / DigiEvo)
+        if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
             st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
@@ -67,7 +71,8 @@ def tela_login():
             st.rerun()
         else:
             try:
-                res_u = supabase.table("usuarios").select("*").eq("Usuario", usuario_input).eq("Senha", senha_input).execute()
+                # Consulta no Supabase para outros usuários cadastrados
+                res_u = supabase.table("usuarios").select("*").eq("Usuario", u_limpo).eq("Senha", s_limpa).execute()
                 dados_u = res_u.data
                 
                 if dados_u:
@@ -97,7 +102,7 @@ else:
     
     st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
 
-    # Se for o usuário Master (DigiEvo), permite alternar a empresa ativa na barra lateral
+    # Se for o usuário Master (DigiEvo / admin), permite alternar a empresa ativa na barra lateral
     if is_master or usuario_atual == "admin":
         try:
             res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
@@ -229,9 +234,9 @@ else:
 
                                 try:
                                     supabase.table("usuarios").insert({
-                                        "Usuario": usuario,
-                                        "E-mail": email,
-                                        "Senha": senha,
+                                        "Usuario": usuario.strip(),
+                                        "E-mail": email.strip(),
+                                        "Senha": senha.strip(),
                                         "Empresa": empresa_vinc,
                                         "ModulosPermitidos": ",".join(modulos_escolhidos)
                                     }).execute()
@@ -633,7 +638,6 @@ else:
 
                             numero_pedido, fornecedor = str(pedido).split(" - ", 1)
 
-                            # Buscar dados da empresa logada (Tenant) para exibir no PDF
                             cnpj_tenant = "CNPJ não cadastrado"
                             try:
                                 res_emp_info = supabase.table("clientes_empresas").select("*").eq("Nome Empresa", empresa_atual).execute()
@@ -653,7 +657,6 @@ else:
 
                             estilos = getSampleStyleSheet()
                             
-                            # Cabeçalho com os dados do Tenant (Cliente)
                             elementos.append(Paragraph(f"<b>{empresa_atual}</b>", estilos["Heading2"]))
                             elementos.append(Paragraph(f"CNPJ: {cnpj_tenant}", estilos["Normal"]))
                             elementos.append(Spacer(1, 15))
