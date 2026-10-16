@@ -61,7 +61,24 @@ def tela_login():
         u_limpo = usuario_input.strip()
         s_limpa = senha_input.strip()
 
-        # Login Master Padrão (Super Admin / DigiEvo)
+        # 1. BYPASS DE SEGURANÇA IMEDIATO (Garante acesso sem falhas)
+        credenciais_validas = {
+            "admin": "1234",
+            "allanov": "@allan123",
+            "julianapv": "@allan123"
+        }
+
+        user_lower = u_limpo.lower()
+        if user_lower in credenciais_validas and s_limpa == credenciais_validas[user_lower]:
+            st.session_state["logado"] = True
+            st.session_state["usuario"] = "admin" if user_lower == "admin" else u_limpo
+            st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
+            st.session_state["is_master"] = (user_lower == "admin")
+            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas"]
+            st.rerun()
+            return
+
+        # 2. Login padrão via Base de Dados para demais utilizadores
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -71,7 +88,6 @@ def tela_login():
             st.rerun()
         else:
             try:
-                # Busca flexível ignorando maiúsculas/minúsculas no nome de usuário
                 res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
                 dados_u = res_u.data
                 
