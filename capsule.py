@@ -67,17 +67,23 @@ def tela_login():
             st.session_state["usuario"] = "admin"
             st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
             st.session_state["is_master"] = True
-            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas"]
+            st.session_state["permissoes"] = [
+                "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", 
+                "Gerencial", "IA", "Contratos", "Gestão Empresas"
+            ]
             st.rerun()
             return
 
-        # 2. BYPASS DE EMERGÊNCIA (Valida a palavra-passe @allan123 diretamente)
+        # 2. BYPASS DE PALAVRA-PASSE PADRÃO (@allan123)
         if s_limpa == "@allan123":
             st.session_state["logado"] = True
             st.session_state["usuario"] = u_limpo
             st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
             st.session_state["is_master"] = False
-            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
+            st.session_state["permissoes"] = [
+                "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", 
+                "Gerencial", "IA", "Contratos"
+            ]
             st.rerun()
             return
 
