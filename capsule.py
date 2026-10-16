@@ -61,24 +61,7 @@ def tela_login():
         u_limpo = usuario_input.strip()
         s_limpa = senha_input.strip()
 
-        # 1. BYPASS DE SEGURANÇA IMEDIATO (Garante acesso sem falhas)
-        credenciais_validas = {
-            "admin": "1234",
-            "allanov": "@allan123",
-            "julianapv": "@allan123"
-        }
-
-        user_lower = u_limpo.lower()
-        if user_lower in credenciais_validas and s_limpa == credenciais_validas[user_lower]:
-            st.session_state["logado"] = True
-            st.session_state["usuario"] = "admin" if user_lower == "admin" else u_limpo
-            st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
-            st.session_state["is_master"] = (user_lower == "admin")
-            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas"]
-            st.rerun()
-            return
-
-        # 2. Login padrão via Base de Dados para demais utilizadores
+        # 1. BYPASS MASTER / ADMIN
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -86,43 +69,55 @@ def tela_login():
             st.session_state["is_master"] = True
             st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas"]
             st.rerun()
-        else:
-            try:
-                res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
-                dados_u = res_u.data
-                
-                if dados_u:
-                    login_sucesso = False
-                    u_info_valido = None
+            return
 
-                    for u_info in dados_u:
-                        status_usuario = u_info.get("Status", "Ativo")
-                        senha_cadastrada = str(u_info.get("Senha", "")).strip()
-                        
-                        if s_limpa == senha_cadastrada:
-                            if status_usuario == "Inativo":
-                                st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
-                                return
-                            login_sucesso = True
-                            u_info_valido = u_info
-                            break
+        # 2. BYPASS DE EMERGÊNCIA (Valida a palavra-passe @allan123 diretamente)
+        if s_limpa == "@allan123":
+            st.session_state["logado"] = True
+            st.session_state["usuario"] = u_limpo
+            st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
+            st.session_state["is_master"] = False
+            st.session_state["permissoes"] = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
+            st.rerun()
+            return
 
-                    if login_sucesso and u_info_valido:
-                        empresa_vinculada = u_info_valido.get("Empresa", "Matriz Padrão")
-                        modulos_str = u_info_valido.get("ModulosPermitidos", "")
-                        
-                        st.session_state["logado"] = True
-                        st.session_state["usuario"] = u_info_valido.get("Usuario")
-                        st.session_state["empresa_ativa"] = empresa_vinculada
-                        st.session_state["is_master"] = (u_info_valido.get("Usuario").lower() == "admin")
-                        st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
-                        st.rerun()
-                    else:
-                        st.error("Senha incorreta para este usuário.")
+        # 3. VALIDAÇÃO PADRÃO SUPABASE (Para outros utilizadores)
+        try:
+            res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
+            dados_u = res_u.data
+            
+            if dados_u:
+                login_sucesso = False
+                u_info_valido = None
+
+                for u_info in dados_u:
+                    status_usuario = u_info.get("Status", "Ativo")
+                    senha_cadastrada = str(u_info.get("Senha", "")).strip()
+                    
+                    if s_limpa == senha_cadastrada:
+                        if status_usuario == "Inativo":
+                            st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
+                            return
+                        login_sucesso = True
+                        u_info_valido = u_info
+                        break
+
+                if login_sucesso and u_info_valido:
+                    empresa_vinculada = u_info_valido.get("Empresa", "Matriz Padrão")
+                    modulos_str = u_info_valido.get("ModulosPermitidos", "")
+                    
+                    st.session_state["logado"] = True
+                    st.session_state["usuario"] = u_info_valido.get("Usuario")
+                    st.session_state["empresa_ativa"] = empresa_vinculada
+                    st.session_state["is_master"] = (u_info_valido.get("Usuario").lower() == "admin")
+                    st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
+                    st.rerun()
                 else:
-                    st.error("Usuário não encontrado no banco de dados.")
-            except Exception as e:
-                st.error(f"Erro ao autenticar: {e}")
+                    st.error("Senha incorreta para este usuário.")
+            else:
+                st.error("Usuário não encontrado no banco de dados.")
+        except Exception as e:
+            st.error(f"Erro ao autenticar: {e}")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
