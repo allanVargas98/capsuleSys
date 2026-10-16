@@ -71,7 +71,8 @@ def tela_login():
             st.rerun()
         else:
             try:
-                res_u = supabase.table("usuarios").select("*").eq("Usuario", u_limpo).execute()
+                # Busca flexível ignorando maiúsculas/minúsculas no nome de usuário
+                res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
                 dados_u = res_u.data
                 
                 if dados_u:
@@ -82,13 +83,13 @@ def tela_login():
                         status_usuario = u_info.get("Status", "Ativo")
                         senha_cadastrada = str(u_info.get("Senha", "")).strip()
                         
-                        if status_usuario == "Ativo" and s_limpa == senha_cadastrada:
+                        if s_limpa == senha_cadastrada:
+                            if status_usuario == "Inativo":
+                                st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
+                                return
                             login_sucesso = True
                             u_info_valido = u_info
                             break
-                        elif status_usuario == "Inativo" and s_limpa == senha_cadastrada:
-                            st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
-                            return
 
                     if login_sucesso and u_info_valido:
                         empresa_vinculada = u_info_valido.get("Empresa", "Matriz Padrão")
@@ -97,7 +98,7 @@ def tela_login():
                         st.session_state["logado"] = True
                         st.session_state["usuario"] = u_info_valido.get("Usuario")
                         st.session_state["empresa_ativa"] = empresa_vinculada
-                        st.session_state["is_master"] = (u_info_valido.get("Usuario") == "admin")
+                        st.session_state["is_master"] = (u_info_valido.get("Usuario").lower() == "admin")
                         st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else []
                         st.rerun()
                     else:
@@ -118,7 +119,7 @@ else:
     
     st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
 
-    if is_master or usuario_atual == "admin":
+    if is_master or usuario_atual.lower() == "admin":
         try:
             res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
             lista_empresas_clientes = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["DigiEvo Business LTDA"]
@@ -141,7 +142,7 @@ else:
     todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
     
-    if is_master or usuario_atual == "admin":
+    if is_master or usuario_atual.lower() == "admin":
         modulos_permitidos = todos_modulos
     else:
         modulos_permitidos = [m for m in todos_modulos if m in permissoes_usuario or m == "Desconectar"]
@@ -219,7 +220,7 @@ else:
                     except Exception:
                         lista_emp_cadastradas = ["DigiEvo Business LTDA"]
 
-                    if not is_master and usuario_atual != "admin":
+                    if not is_master and usuario_atual.lower() != "admin":
                         lista_emp_cadastradas = [empresa_atual]
 
                     if sub_aba_usuario == "Novo Utilizador":
@@ -331,7 +332,7 @@ else:
                     st.divider()
                     st.subheader("👥 Lista de Utilizadores Registados")
                     try:
-                        if is_master or usuario_atual == "admin":
+                        if is_master or usuario_atual.lower() == "admin":
                             res_u_cad = supabase.table("usuarios").select("Usuario, E-mail, Empresa, Status, ModulosPermitidos").execute()
                         else:
                             res_u_cad = supabase.table("usuarios").select("Usuario, E-mail, Empresa, Status, ModulosPermitidos").eq("Empresa", empresa_atual).execute()
