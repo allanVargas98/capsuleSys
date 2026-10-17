@@ -19,14 +19,14 @@ SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
 SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", "SUA_CHAVE_AQUI"))
+client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
 modelo = "models/gemini-3-flash-preview"
 
 # Funções Utilitárias & Auditoria
-def registrar_log(usuario, empresa, acao, detalhe=""):
+def registrar_log(Usuario, empresa, acao, detalhe=""):
     try:
         supabase.table("audit_logs").insert({
-            "usuario": usuario,
+            "usuario": Usuario,
             "empresa_id": empresa,
             "acao": acao,
             "detalhe": detalhe,
@@ -68,14 +68,18 @@ st.title("Capsule Sys")
 def tela_login():
     st.title("Login de Acesso")
     
-    usuario_input = st.text_input("Usuário", value="admin")
-    senha_input = st.text_input("Senha", type="password", value="1234")
+    usuario_input = st.text_input("Usuário", value="")
+    senha_input = st.text_input("Senha", type="password", value="")
 
     if st.button("Entrar"):
         u_limpo = usuario_input.strip()
         s_limpa = senha_input.strip()
 
-        # 1. Autenticação Admin Master
+        if not u_limpo or not s_limpa:
+            st.warning("Por favor, preencha o usuário e a senha.")
+            return
+
+        # 1. Autenticação Master (Admin Primário)
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -89,36 +93,31 @@ def tela_login():
             st.rerun()
             return
 
-        # 2. Autenticação via Banco de Dados Normalizada
+        # 2. Autenticação via Banco de Dados (Supabase - Consulta na coluna 'Usuario')
         try:
             res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
             dados_u = res_u.data
             
             if dados_u:
-                login_sucesso = False
-                u_info_valido = None
+                u_info = dados_u[0]
+                status_usuario = u_info.get("Status", "Ativo")
+                senha_cadastrada = str(u_info.get("Senha", "")).strip()
 
-                for u_info in dados_u:
-                    status_usuario = u_info.get("Status", "Ativo")
-                    senha_cadastrada = str(u_info.get("Senha", "")).strip()
-                    
-                    if s_limpa == senha_cadastrada:
-                        if status_usuario == "Inativo":
-                            st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
-                            return
-                        login_sucesso = True
-                        u_info_valido = u_info
-                        break
+                if status_usuario == "Inativo":
+                    st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
+                    return
 
-                if login_sucesso and u_info_valido:
-                    empresa_vinculada = u_info_valido.get("Empresa", "DigiEvo Business LTDA")
-                    modulos_str = u_info_valido.get("ModulosPermitidos", "")
+                if s_limpa == senha_cadastrada:
+                    empresa_vinculada = u_info.get("Empresa", "DigiEvo Business LTDA")
+                    modulos_str = u_info.get("ModulosPermitidos", "")
                     
                     st.session_state["logado"] = True
-                    st.session_state["usuario"] = u_info_valido.get("Usuario")
+                    st.session_state["usuario"] = u_info.get("Usuario")
                     st.session_state["empresa_ativa"] = empresa_vinculada
-                    st.session_state["is_master"] = (u_info_valido.get("Usuario").lower() == "admin")
-                    st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
+                    st.session_state["is_master"] = (str(u_info.get("Usuario")).lower() == "admin")
+                    st.session_state["permissoes"] = [m.strip() for m in modulos_str.split(",")] if modulos_str else [
+                        "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
+                    ]
                     
                     registrar_log(st.session_state["usuario"], empresa_vinculada, "Login Sucesso", "Autenticação via base de dados")
                     st.rerun()
@@ -127,7 +126,7 @@ def tela_login():
             else:
                 st.error("Usuário não encontrado no banco de dados.")
         except Exception as e:
-            st.error(f"Erro ao autenticar: {e}")
+            st.error(f"Erro ao comunicar com a base de dados: {e}")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
