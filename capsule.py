@@ -175,7 +175,7 @@ else:
             st.header(f"Painel Executivo — {empresa_atual}")
             
             # --- CENTRO DE ALERTAS ---
-            st.subheader("🔔 Notificações e Alertas")
+            st.subheader("Riscos de faltas")
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
