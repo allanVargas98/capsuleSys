@@ -999,9 +999,28 @@ else:
                 st.chat_message("user").write(texto_user)
                 st.session_state["lista_mensagem"].append({"role": "user", "content": texto_user})
 
-                mensagens = [{"role": msg["role"],"parts": [{"text": msg["content"]}]} for msg in st.session_state["lista_mensagem"]]
-                resposta_ia = client.models.generate_content(model=modelo, contents=mensagens)
-                texto_resposta_ia = resposta_ia.text
+                try:
+                    historico_chat = []
+                    for msg in st.session_state["lista_mensagem"]:
+                        historico_chat.append({
+                            "role": msg["role"],
+                            "parts": [{"text": msg["content"]}]
+                        })
+
+                    resposta_ia = client.models.generate_content(
+                        model=modelo, 
+                        contents=historico_chat
+                    )
+                    texto_resposta_ia = resposta_ia.text
+                except Exception as e:
+                    try:
+                        resposta_ia = client.models.generate_content(
+                            model=modelo, 
+                            contents=texto_user
+                        )
+                        texto_resposta_ia = resposta_ia.text
+                    except Exception as err:
+                        texto_resposta_ia = f"Erro ao comunicar com a IA: {err}"
 
                 st.chat_message("assistant").write(texto_resposta_ia)
                 st.session_state["lista_mensagem"].append({"role": "assistant", "content": texto_resposta_ia})
