@@ -751,11 +751,23 @@ else:
                     modo_recebimento = st.radio("Modo de Operação", ["📱 Recebimento Mobile / Rápido", "📋 Conferência por Pedido (Manual)"], horizontal=True)
 
                     if modo_recebimento == "📱 Recebimento Mobile / Rápido":
-                        st.info("Utilize a câmara do telemóvel/celular para registar ou selecione o código do produto.")
+                        st.info("Utilize a câmara do dispositivo para capturar boletos, notas fiscais ou ler o código do produto.")
                         
+                        # --- DADOS DO DOCUMENTO (NF & BOLETO) ---
+                        with st.expander("📄 Dados do Documento Fiscal & Pagamento", expanded=True):
+                            col_doc1, col_doc2 = st.columns(2)
+                            with col_doc1:
+                                numero_nota_fiscal = st.text_input("Número da Nota Fiscal (NF)", placeholder="Ex: 001234")
+                            with col_doc2:
+                                cod_barras_boleto = st.text_input("Linha Digitável / Código de Barras do Boleto", placeholder="Cole ou digite a linha digitável")
+                            
+                            foto_boleto_nf = st.file_uploader("Upload / Foto do Boleto ou NF (PNG, JPG, PDF)", type=["png", "jpg", "jpeg", "pdf"])
+
+                        st.divider()
+
                         col_mob1, col_mob2 = st.columns([1, 1])
                         with col_mob1:
-                            foto_capturada = st.camera_input("📷 Focar no Código de Barras / Embalagem")
+                            foto_capturada = st.camera_input("📷 Focar no Código de Barras / Embalagem / Documento")
                         
                         with col_mob2:
                             ean_buscado = st.text_input("🔍 Digitar ou Bipar Código de Barras / EAN")
@@ -773,8 +785,15 @@ else:
                                         if st.button("Confirmar Entrada Rápida"):
                                             nova_qtd = int(p_item.get('Quantidade Produto', 0) or 0) + int(qtd_add)
                                             supabase.table("produto").update({"Quantidade Produto": nova_qtd}).eq("id", p_item["id"]).execute()
-                                            registrar_log(usuario_atual, empresa_atual, "Recebimento Mobile", f"Produto: {p_item.get('Descrição Produto')} | Qtd Entrada: {qtd_add}")
-                                            st.success("Estoque atualizado via Mobile com sucesso!")
+                                            
+                                            detalhe_log = f"Produto: {p_item.get('Descrição Produto')} | Qtd Entrada: {qtd_add}"
+                                            if numero_nota_fiscal:
+                                                detalhe_log += f" | NF: {numero_nota_fiscal}"
+                                            if cod_barras_boleto:
+                                                detalhe_log += f" | Boleto: {cod_barras_boleto}"
+
+                                            registrar_log(usuario_atual, empresa_atual, "Recebimento Mobile", detalhe_log)
+                                            st.success("Estoque e registo de recebimento atualizados com sucesso!")
                                             st.rerun()
                                     else:
                                         st.warning("Nenhum produto cadastrado com este código EAN.")
