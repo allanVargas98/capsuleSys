@@ -19,7 +19,13 @@ SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
 SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", "SUA_CHAVE_AQUI"))
+# Configuração Segura do Google Gemini IA (Evita ValueError e bloqueios de Git)
+try:
+    gemini_key = st.secrets.get("GEMINI_API_KEY", "")
+    client = genai.Client(api_key=gemini_key) if gemini_key else None
+except Exception:
+    client = None
+
 modelo = "models/gemini-3-flash-preview"
 
 # Funções Utilitárias & Auditoria
@@ -68,12 +74,16 @@ st.title("Capsule Sys")
 def tela_login():
     st.title("Login de Acesso")
     
-    Usuario_input = st.text_input("Usuário", value="admin")
-    senha_input = st.text_input("Senha", type="password", value="1234")
+    Usuario_input = st.text_input("Usuário", value="")
+    senha_input = st.text_input("Senha", type="password", value="")
 
     if st.button("Entrar"):
         u_limpo = Usuario_input.strip()
         s_limpa = senha_input.strip()
+
+        if not u_limpo or not s_limpa:
+            st.warning("Por favor, preencha o usuário e a senha.")
+            return
 
         # 1. Autenticação Admin Master
         if u_limpo.lower() == "admin" and s_limpa == "1234":
@@ -89,7 +99,7 @@ def tela_login():
             st.rerun()
             return
 
-        # 2. Autenticação via Banco de Dados Normalizada
+        # 2. Autenticação via Banco de Dados Normalizada (Coluna exata 'Usuario')
         try:
             res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
             dados_u = res_u.data
@@ -117,8 +127,10 @@ def tela_login():
                     st.session_state["logado"] = True
                     st.session_state["usuario"] = u_info_valido.get("Usuario")
                     st.session_state["empresa_ativa"] = empresa_vinculada
-                    st.session_state["is_master"] = (u_info_valido.get("Usuario").lower() == "admin")
-                    st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
+                    st.session_state["is_master"] = (str(u_info_valido.get("Usuario")).lower() == "admin")
+                    st.session_state["permissoes"] = [m.strip() for m in modulos_str.split(",")] if modulos_str else [
+                        "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
+                    ]
                     
                     registrar_log(st.session_state["usuario"], empresa_vinculada, "Login Sucesso", "Autenticação via base de dados")
                     st.rerun()
@@ -999,28 +1011,31 @@ else:
                 st.chat_message("user").write(texto_user)
                 st.session_state["lista_mensagem"].append({"role": "user", "content": texto_user})
 
-                try:
-                    historico_chat = []
-                    for msg in st.session_state["lista_mensagem"]:
-                        historico_chat.append({
-                            "role": msg["role"],
-                            "parts": [{"text": msg["content"]}]
-                        })
-
-                    resposta_ia = client.models.generate_content(
-                        model=modelo, 
-                        contents=historico_chat
-                    )
-                    texto_resposta_ia = resposta_ia.text
-                except Exception as e:
+                if not client:
+                    texto_resposta_ia = "⚠️ Chave de API do Gemini não configurada nos segredos do Streamlit Cloud."
+                else:
                     try:
+                        historico_chat = []
+                        for msg in st.session_state["lista_mensagem"]:
+                            historico_chat.append({
+                                "role": msg["role"],
+                                "parts": [{"text": msg["content"]}]
+                            })
+
                         resposta_ia = client.models.generate_content(
                             model=modelo, 
-                            contents=texto_user
+                            contents=historico_chat
                         )
                         texto_resposta_ia = resposta_ia.text
-                    except Exception as err:
-                        texto_resposta_ia = f"Erro ao comunicar com a IA: {err}"
+                    except Exception as e:
+                        try:
+                            resposta_ia = client.models.generate_content(
+                                model=modelo, 
+                                contents=texto_user
+                            )
+                            texto_resposta_ia = resposta_ia.text
+                        except Exception as err:
+                            texto_resposta_ia = f"Erro ao comunicar com a IA: {err}"
 
                 st.chat_message("assistant").write(texto_resposta_ia)
                 st.session_state["lista_mensagem"].append({"role": "assistant", "content": texto_resposta_ia})
