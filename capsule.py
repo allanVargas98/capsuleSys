@@ -68,18 +68,14 @@ st.title("Capsule Sys")
 def tela_login():
     st.title("Login de Acesso")
     
-    usuario_input = st.text_input("Usuário", value="")
-    senha_input = st.text_input("Senha", type="password", value="")
+    Usuario_input = st.text_input("Usuário", value="admin")
+    senha_input = st.text_input("Senha", type="password", value="1234")
 
     if st.button("Entrar"):
-        u_limpo = usuario_input.strip()
+        u_limpo = Usuario_input.strip()
         s_limpa = senha_input.strip()
 
-        if not u_limpo or not s_limpa:
-            st.warning("Por favor, preencha o usuário e a senha.")
-            return
-
-        # 1. Autenticação Master (Admin Primário)
+        # 1. Autenticação Admin Master
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -93,31 +89,36 @@ def tela_login():
             st.rerun()
             return
 
-        # 2. Autenticação via Banco de Dados (Supabase - Consulta na coluna 'Usuario')
+        # 2. Autenticação via Banco de Dados Normalizada
         try:
             res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
             dados_u = res_u.data
             
             if dados_u:
-                u_info = dados_u[0]
-                status_usuario = u_info.get("Status", "Ativo")
-                senha_cadastrada = str(u_info.get("Senha", "")).strip()
+                login_sucesso = False
+                u_info_valido = None
 
-                if status_usuario == "Inativo":
-                    st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
-                    return
+                for u_info in dados_u:
+                    status_usuario = u_info.get("Status", "Ativo")
+                    senha_cadastrada = str(u_info.get("Senha", "")).strip()
+                    
+                    if s_limpa == senha_cadastrada:
+                        if status_usuario == "Inativo":
+                            st.error("Este utilizador encontra-se inativo. Contacte o administrador.")
+                            return
+                        login_sucesso = True
+                        u_info_valido = u_info
+                        break
 
-                if s_limpa == senha_cadastrada:
-                    empresa_vinculada = u_info.get("Empresa", "DigiEvo Business LTDA")
-                    modulos_str = u_info.get("ModulosPermitidos", "")
+                if login_sucesso and u_info_valido:
+                    empresa_vinculada = u_info_valido.get("Empresa", "DigiEvo Business LTDA")
+                    modulos_str = u_info_valido.get("ModulosPermitidos", "")
                     
                     st.session_state["logado"] = True
-                    st.session_state["usuario"] = u_info.get("Usuario")
+                    st.session_state["usuario"] = u_info_valido.get("Usuario")
                     st.session_state["empresa_ativa"] = empresa_vinculada
-                    st.session_state["is_master"] = (str(u_info.get("Usuario")).lower() == "admin")
-                    st.session_state["permissoes"] = [m.strip() for m in modulos_str.split(",")] if modulos_str else [
-                        "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
-                    ]
+                    st.session_state["is_master"] = (u_info_valido.get("Usuario").lower() == "admin")
+                    st.session_state["permissoes"] = modulos_str.split(",") if modulos_str else ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"]
                     
                     registrar_log(st.session_state["usuario"], empresa_vinculada, "Login Sucesso", "Autenticação via base de dados")
                     st.rerun()
@@ -126,7 +127,7 @@ def tela_login():
             else:
                 st.error("Usuário não encontrado no banco de dados.")
         except Exception as e:
-            st.error(f"Erro ao comunicar com a base de dados: {e}")
+            st.error(f"Erro ao autenticar: {e}")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
