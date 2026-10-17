@@ -19,7 +19,7 @@ SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
 SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
+client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", "SUA_CHAVE_AQUI"))
 modelo = "models/gemini-3-flash-preview"
 
 # Funções Utilitárias & Auditoria
