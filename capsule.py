@@ -746,42 +746,78 @@ else:
                         st.error(f"Erro no ajuste de estoque: {e}")
 
                 case "Recebimento":
-                    try:
-                        res_v = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
-                        df_pedido = pd.DataFrame(res_v.data if res_v.data else [])
-                        if not df_pedido.empty and "NumeroPedido" in df_pedido.columns and "Fornecedor" in df_pedido.columns:
-                            df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
-                            pedido = st.selectbox("Selecione o Pedido para Recebimento", df_pedido["PedidoLabel"].unique().tolist())
+                    st.subheader("📦 Recebimento de Mercadorias & Leitura Mobile")
+                    
+                    modo_recebimento = st.radio("Modo de Operação", ["📱 Recebimento Mobile / Rápido", "📋 Conferência por Pedido (Manual)"], horizontal=True)
 
-                            numero_pedido, fornecedor = str(pedido).split(" - ", 1)
-                            df_itens_pedido = df_pedido[(df_pedido["NumeroPedido"].astype(str) == numero_pedido) & (df_pedido["Fornecedor"].astype(str) == fornecedor)]
+                    if modo_recebimento == "📱 Recebimento Mobile / Rápido":
+                        st.info("Utilize a câmara do telemóvel/celular para registar ou selecione o código do produto.")
+                        
+                        col_mob1, col_mob2 = st.columns([1, 1])
+                        with col_mob1:
+                            foto_capturada = st.camera_input("📷 Focar no Código de Barras / Embalagem")
+                        
+                        with col_mob2:
+                            ean_buscado = st.text_input("🔍 Digitar ou Bipar Código de Barras / EAN")
+                            
+                            if ean_buscado:
+                                try:
+                                    res_ean = supabase.table("produto").select("*").eq("ean_produto", ean_buscado.strip()).eq("empresa_id", empresa_atual).execute()
+                                    prod_encontrados = res_ean.data if res_ean.data else []
+                                    if prod_encontrados:
+                                        p_item = prod_encontrados[0]
+                                        st.success(f"Item Identificado: **{p_item.get('Descrição Produto')}**")
+                                        st.caption(f"Filial: {p_item.get('Filial')} | Qtd Atual: {p_item.get('Quantidade Produto')}")
+                                        
+                                        qtd_add = st.number_input("Quantidade a Entrar", min_value=1, value=1, step=1)
+                                        if st.button("Confirmar Entrada Rápida"):
+                                            nova_qtd = int(p_item.get('Quantidade Produto', 0) or 0) + int(qtd_add)
+                                            supabase.table("produto").update({"Quantidade Produto": nova_qtd}).eq("id", p_item["id"]).execute()
+                                            registrar_log(usuario_atual, empresa_atual, "Recebimento Mobile", f"Produto: {p_item.get('Descrição Produto')} | Qtd Entrada: {qtd_add}")
+                                            st.success("Estoque atualizado via Mobile com sucesso!")
+                                            st.rerun()
+                                    else:
+                                        st.warning("Nenhum produto cadastrado com este código EAN.")
+                                except Exception as e_ean:
+                                    st.error(f"Erro na busca por EAN: {e_ean}")
 
-                            st.write("Itens do Pedido:")
-                            st.table(df_itens_pedido[["Produto", "Preço Cotado"]])
+                    else:
+                        try:
+                            res_v = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
+                            df_pedido = pd.DataFrame(res_v.data if res_v.data else [])
+                            if not df_pedido.empty and "NumeroPedido" in df_pedido.columns and "Fornecedor" in df_pedido.columns:
+                                df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
+                                pedido = st.selectbox("Selecione o Pedido para Recebimento", df_pedido["PedidoLabel"].unique().tolist())
 
-                            res_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
-                            df_produto = pd.DataFrame(res_p.data if res_p.data else [])
-                            filiais = df_produto["Filial"].unique().tolist() if not df_produto.empty and "Filial" in df_produto.columns else []
-                            filial_escolhida = st.selectbox("Selecione a Filial de Entrada", filiais)
+                                numero_pedido, fornecedor = str(pedido).split(" - ", 1)
+                                df_itens_pedido = df_pedido[(df_pedido["NumeroPedido"].astype(str) == numero_pedido) & (df_pedido["Fornecedor"].astype(str) == fornecedor)]
 
-                            recebimentos = {}
-                            for _, row in df_itens_pedido.iterrows():
-                                qtd_recebida = st.number_input(f"Quantidade recebida de {row['Produto']}", min_value=0, step=1)
-                                recebimentos[row["Produto"]] = int(qtd_recebida)
+                                st.write("Itens do Pedido:")
+                                st.table(df_itens_pedido[["Produto", "Preço Cotado"]])
 
-                            if st.button("Confirmar Recebimento"):
-                                for produto, qtd in recebimentos.items():
-                                    if qtd > 0:
-                                        res_q = supabase.table("produto").select("id, Quantidade Produto").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).eq("empresa_id", empresa_atual).execute()
-                                        if res_q.data:
-                                            row_p = res_q.data[0]
-                                            qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
-                                            novo_total = qtd_atual + int(qtd)
-                                            supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
-                                registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido}")
-                                st.success("Estoque atualizado com sucesso!")
-                    except Exception as e:
-                        st.error(f"Erro no recebimento: {e}")
+                                res_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
+                                df_produto = pd.DataFrame(res_p.data if res_p.data else [])
+                                filiais = df_produto["Filial"].unique().tolist() if not df_produto.empty and "Filial" in df_produto.columns else []
+                                filial_escolhida = st.selectbox("Selecione a Filial de Entrada", filiais)
+
+                                recebimentos = {}
+                                for _, row in df_itens_pedido.iterrows():
+                                    qtd_recebida = st.number_input(f"Quantidade recebida de {row['Produto']}", min_value=0, step=1)
+                                    recebimentos[row["Produto"]] = int(qtd_recebida)
+
+                                if st.button("Confirmar Recebimento"):
+                                    for produto, qtd in recebimentos.items():
+                                        if qtd > 0:
+                                            res_q = supabase.table("produto").select("id, Quantidade Produto").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).eq("empresa_id", empresa_atual).execute()
+                                            if res_q.data:
+                                                row_p = res_q.data[0]
+                                                qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
+                                                novo_total = qtd_atual + int(qtd)
+                                                supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
+                                    registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido}")
+                                    st.success("Estoque atualizado com sucesso!")
+                        except Exception as e:
+                            st.error(f"Erro no recebimento: {e}")
 
         case "Compras":
             st.write("Módulo de Compras")
