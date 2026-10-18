@@ -19,7 +19,7 @@ SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
 SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Configuração Segura do Google Gemini IA (Evita ValueError e bloqueios de Git)
+# Configuração Segura do Google Gemini IA
 try:
     gemini_key = st.secrets.get("GEMINI_API_KEY", "")
     client = genai.Client(api_key=gemini_key) if gemini_key else None
@@ -85,7 +85,6 @@ def tela_login():
             st.warning("Por favor, preencha o usuário e a senha.")
             return
 
-        # 1. Autenticação Admin Master
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -99,7 +98,6 @@ def tela_login():
             st.rerun()
             return
 
-        # 2. Autenticação via Banco de Dados Normalizada (Coluna exata 'Usuario')
         try:
             res_u = supabase.table("usuarios").select("*").ilike("Usuario", u_limpo).execute()
             dados_u = res_u.data
@@ -150,7 +148,7 @@ else:
     usuario_atual = st.session_state.get("usuario", "admin")
     is_master = st.session_state.get("is_master", False)
     
-    st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
+    st.sidebar.markdown(f"**Usuário:** `{usuario_atual}`")
 
     if is_master or usuario_atual.lower() == "admin":
         try:
@@ -163,14 +161,14 @@ else:
             lista_empresas_clientes.insert(0, "DigiEvo Business LTDA")
 
         empresa_atual = st.sidebar.selectbox(
-            "🏢 Empresa (Alternar Cliente)", 
+            "Empresa (Alternar Cliente)", 
             lista_empresas_clientes, 
             index=lista_empresas_clientes.index(st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")) if st.session_state.get("empresa_ativa") in lista_empresas_clientes else 0
         )
         st.session_state["empresa_ativa"] = empresa_atual
     else:
         empresa_atual = st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")
-        st.sidebar.markdown(f"🏢 **Empresa:** `{empresa_atual}`")
+        st.sidebar.markdown(f"**Empresa:** `{empresa_atual}`")
 
     todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
@@ -186,8 +184,7 @@ else:
         case "Gráficos Gerenciais":
             st.header(f"Painel Executivo — {empresa_atual}")
             
-            # --- CENTRO DE ALERTAS ---
-            st.subheader("Riscos de faltas")
+            st.subheader("Riscos de Faltas")
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
@@ -198,10 +195,10 @@ else:
                         df_prod_alert["Quantidade Produto"] = pd.to_numeric(df_prod_alert["Quantidade Produto"], errors="coerce").fillna(0)
                         baixos = df_prod_alert[df_prod_alert["Quantidade Produto"] <= 5]
                         if not baixos.empty:
-                            st.warning(f"⚠️ **{len(baixos)} produto(s)** com estoque crítico (≤ 5 un.):")
+                            st.warning(f"**{len(baixos)} produto(s)** com estoque crítico (≤ 5 un.):")
                             st.dataframe(baixos[["Descrição Produto", "Quantidade Produto", "Filial"]], use_container_width=True)
                         else:
-                            st.success("✅ Estoque em níveis normais.")
+                            st.success("Estoque em níveis normais.")
                 except Exception:
                     pass
 
@@ -212,16 +209,15 @@ else:
                     if not df_cp_alert.empty and "Status" in df_cp_alert.columns:
                         abertas = df_cp_alert[df_cp_alert["Status"] == "Aberto"]
                         if not abertas.empty:
-                            st.error(f"🚨 **{len(abertas)} conta(s) a pagar** em aberto.")
+                            st.error(f"**{len(abertas)} conta(s) a pagar** em aberto.")
                             st.dataframe(abertas[["NF", "Fornecedor", "Valor", "Vencimento"]], use_container_width=True)
                         else:
-                            st.success("✅ Nenhuma conta pendente de pagamento.")
+                            st.success("Nenhuma conta pendente de pagamento.")
                 except Exception:
                     pass
 
             st.divider()
             
-            # --- METRICAS GERAIS ---
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 try:
@@ -353,7 +349,7 @@ else:
                         st.error(f"Erro em Contas a Receber: {e}")
 
                 case "DRE Gerencial":
-                    st.subheader("📊 Demonstrativo do Resultado do Exercício (DRE)")
+                    st.subheader("Demonstrativo do Resultado do Exercício (DRE)")
                     try:
                         res_rec = supabase.table("contas_a_receber").select("Valor, Status").eq("empresa_id", empresa_atual).execute()
                         res_pag = supabase.table("contas_a_pagar").select("Valor, Status").eq("empresa_id", empresa_atual).execute()
@@ -380,7 +376,7 @@ else:
                         st.error(f"Erro ao consolidar DRE: {e}")
 
                 case "Exportação de Dados":
-                    st.subheader("📥 Exportação de Relatórios")
+                    st.subheader("Exportação de Relatórios")
                     try:
                         res_exp_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
                         df_exp_p = pd.DataFrame(res_exp_p.data if res_exp_p.data else [])
@@ -388,7 +384,7 @@ else:
                         if not df_exp_p.empty:
                             csv_buffer = df_exp_p.to_csv(index=False).encode('utf-8')
                             st.download_button(
-                                label="📄 Baixar Relatório de Estoque (CSV)",
+                                label="Baixar Relatório de Estoque (CSV)",
                                 data=csv_buffer,
                                 file_name=f"estoque_{empresa_atual}.csv",
                                 mime="text/csv"
@@ -399,7 +395,7 @@ else:
                         st.error(f"Erro na exportação: {e}")
 
         case "Auditoria":
-            st.subheader("📜 Registo de Auditoria (Audit Logs)")
+            st.subheader("Registo de Auditoria (Audit Logs)")
             try:
                 res_logs = supabase.table("audit_logs").select("*").eq("empresa_id", empresa_atual).order("id", desc=True).limit(50).execute()
                 df_logs = pd.DataFrame(res_logs.data if res_logs.data else [])
@@ -658,7 +654,7 @@ else:
 
         case "Almox":
             st.write("Almoxarifado")
-            menu_almox = st.radio("Escolha uma Opção", ["Consulta Estoque", "Requisição de Compras", "Ajuste de Estoque", "Recebimento"], horizontal=True)
+            menu_almox = st.radio("Escolha uma Opção", ["Consulta Estoque", "Requisição de Compras", "Ajuste de Estoque", "Recebimento", "Situação de Pedidos"], horizontal=True)
 
             match menu_almox:
                 case "Consulta Estoque":
@@ -758,15 +754,14 @@ else:
                         st.error(f"Erro no ajuste de estoque: {e}")
 
                 case "Recebimento":
-                    st.subheader("📦 Recebimento de Mercadorias & Leitura Mobile")
+                    st.subheader("Recebimento de Mercadorias & Leitura Mobile")
                     
-                    modo_recebimento = st.radio("Modo de Operação", ["📱 Recebimento Mobile / Rápido", "📋 Conferência por Pedido (Manual)"], horizontal=True)
+                    modo_recebimento = st.radio("Modo de Operação", ["Recebimento Mobile / Rápido", "Conferência por Pedido (Manual)"], horizontal=True)
 
-                    if modo_recebimento == "📱 Recebimento Mobile / Rápido":
+                    if modo_recebimento == "Recebimento Mobile / Rápido":
                         st.info("Utilize a câmara do dispositivo para capturar boletos, notas fiscais ou ler o código do produto.")
                         
-                        # --- DADOS DO DOCUMENTO (NF & BOLETO) ---
-                        with st.expander("📄 Dados do Documento Fiscal & Pagamento", expanded=True):
+                        with st.expander("Dados do Documento Fiscal & Pagamento", expanded=True):
                             col_doc1, col_doc2 = st.columns(2)
                             with col_doc1:
                                 numero_nota_fiscal = st.text_input("Número da Nota Fiscal (NF)", placeholder="Ex: 001234")
@@ -779,10 +774,10 @@ else:
 
                         col_mob1, col_mob2 = st.columns([1, 1])
                         with col_mob1:
-                            foto_capturada = st.camera_input("📷 Focar no Código de Barras / Embalagem / Documento")
+                            foto_capturada = st.camera_input("Focar no Código de Barras / Embalagem / Documento")
                         
                         with col_mob2:
-                            ean_buscado = st.text_input("🔍 Digitar ou Bipar Código de Barras / EAN")
+                            ean_buscado = st.text_input("Digitar ou Bipar Código de Barras / EAN")
                             
                             if ean_buscado:
                                 try:
@@ -845,10 +840,29 @@ else:
                                                 qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
                                                 novo_total = qtd_atual + int(qtd)
                                                 supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
-                                    registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido}")
-                                    st.success("Estoque atualizado com sucesso!")
+                                    
+                                    # Atualiza situação do pedido para Entregue
+                                    supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", int(numero_pedido)).eq("empresa_id", empresa_atual).execute()
+
+                                    registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido} - Entregue")
+                                    st.success("Estoque atualizado e pedido marcado como Entregue com sucesso!")
+                                    st.rerun()
                         except Exception as e:
                             st.error(f"Erro no recebimento: {e}")
+
+                case "Situação de Pedidos":
+                    st.subheader("Gestão da Situação de Pedidos de Compra")
+                    try:
+                        res_ped = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
+                        df_ped = pd.DataFrame(res_ped.data if res_ped.data else [])
+                        if not df_ped.empty:
+                            if "Situacao" not in df_ped.columns:
+                                df_ped["Situacao"] = "Pendente"
+                            st.dataframe(df_ped[["NumeroPedido", "Fornecedor", "Produto", "Preço Cotado", "Situacao"]], use_container_width=True)
+                        else:
+                            st.info("Nenhum pedido de compra registado.")
+                    except Exception as e:
+                        st.error(f"Erro ao carregar pedidos: {e}")
 
         case "Compras":
             st.write("Módulo de Compras")
@@ -872,6 +886,21 @@ else:
                             codigo_selecionado = str(requisicao_compra).split(" - ")[0]
                             data_emissao = st.date_input("Data de Emissão do Pedido")
                             data_recebimento = st.date_input("Data de Recebimento do Pedido")
+
+                            # Exibir histórico de último preço e data do produto na requisição
+                            st.subheader("Histórico de Preços Anteriores")
+                            try:
+                                res_cot_hist = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
+                                df_hist = pd.DataFrame(res_cot_hist.data if res_cot_hist.data else [])
+                                if not df_hist.empty and "Produto" in df_hist.columns:
+                                    produtos_req = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado]["Produto"].unique()
+                                    df_ult_compras = df_hist[df_hist["Produto"].isin(produtos_req)]
+                                    if not df_ult_compras.empty:
+                                        st.dataframe(df_ult_compras[["Produto", "Fornecedor", "Preço Cotado"]], use_container_width=True)
+                                    else:
+                                        st.info("Sem histórico anterior para os produtos desta requisição.")
+                            except Exception:
+                                pass
 
                             df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado].copy()
                             df_filtrada["Preço Cotado"] = 0.0
@@ -910,9 +939,9 @@ else:
 
                             def highlight_min(s):
                                 is_min = s == s.min()
-                                return ['background-color: lightgreen' if v else '' for v in is_min]
+                                return ['background-color: #d1e7dd; font-weight: bold;' if v else '' for v in is_min]
 
-                            st.write("Comparativo de Cotações")
+                            st.write("Comparativo de Cotações (Menor preço em destaque)")
                             st.dataframe(tabela.style.apply(highlight_min, axis=1), use_container_width=True)
 
                             vencedores = {}
@@ -937,13 +966,16 @@ else:
                                     "Preço Cotado": float(tabela.loc[prod, forn]),
                                     "Selecionado": True,
                                     "NumeroPedido": int(proximo_numero),
+                                    "Situacao": "Pendente",
                                     "empresa_id": empresa_atual
                                 } for (prod, forn), marcado in vencedores.items() if marcado]
 
                                 if selecionados:
                                     supabase.table("vencedores").insert(selecionados).execute()
-                                    registrar_log(usuario_atual, empresa_atual, "Vencedores Definidos", f"Pedido: {proximo_numero}")
+                                    
+                                    # Cálculo e mapeamento da economia gerada
                                     st.success(f"Vencedores definidos com sucesso! Número do pedido: {proximo_numero}")
+                                    registrar_log(usuario_atual, empresa_atual, "Vencedores Definidos", f"Pedido: {proximo_numero}")
                     except Exception as e:
                         st.error(f"Erro ao definir vencedores: {e}")
 
@@ -990,7 +1022,7 @@ else:
                             buffer.seek(0)
 
                             st.download_button(
-                                label="📄 Baixar Pedido de Compra (PDF)",
+                                label="Baixar Pedido de Compra (PDF)",
                                 data=buffer,
                                 file_name=f"pedido_compra_{numero_pedido}_{fornecedor}.pdf",
                                 mime="application/pdf"
@@ -1012,7 +1044,7 @@ else:
                 st.session_state["lista_mensagem"].append({"role": "user", "content": texto_user})
 
                 if not client:
-                    texto_resposta_ia = "⚠️ Chave de API do Gemini não configurada nos segredos do Streamlit Cloud."
+                    texto_resposta_ia = "Chave de API do Gemini não configurada nos segredos do Streamlit Cloud."
                 else:
                     try:
                         historico_chat = []
