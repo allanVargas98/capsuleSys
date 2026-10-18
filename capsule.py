@@ -840,7 +840,6 @@ else:
                                 if st.button("Confirmar Recebimento"):
                                     for produto, qtd in recebimentos.items():
                                         if qtd > 0:
-                                            # CORREÇÃO: Utiliza select("*") para evitar problemas com espaços no nome da coluna Quantity/Quantidade Produto
                                             res_q = supabase.table("produto").select("*").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).eq("empresa_id", empresa_atual).execute()
                                             if res_q.data:
                                                 row_p = res_q.data[0]
@@ -897,7 +896,6 @@ else:
                             data_emissao = st.date_input("Data de Emissão do Pedido")
                             data_recebimento = st.date_input("Data de Recebimento do Pedido")
 
-                            # Prepara a tabela incluindo as colunas do último fornecedor e último preço pagos
                             df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado].copy()
                             df_filtrada["Preço Cotado"] = 0.0
                             df_filtrada["Ultimo Fornecedor"] = "N/D"
@@ -1005,10 +1003,11 @@ else:
 
                             numero_pedido, fornecedor_nome = str(pedido).split(" - ", 1)
                             
-                            res_emp_data = supabase.table("clientes_empresas").select("*").eq("Nome Empresa", empresa_atual).execute()
+                            # CORREÇÃO: Utiliza .ilike() no campo "Nome Empresa" para evitar divergência de maiúsculas/minúsculas no CNPJ da empresa
+                            res_emp_data = supabase.table("clientes_empresas").select("*").ilike("Nome Empresa", empresa_atual.strip()).execute()
                             emp_info = res_emp_data.data[0] if res_emp_data.data else {"CNPJ": "00.000.000/0001-00", "Nome Empresa": empresa_atual}
 
-                            res_forn_data = supabase.table("fornecedor").select("*").eq("Nome Fornecedor", fornecedor_nome).eq("empresa_id", empresa_atual).execute()
+                            res_forn_data = supabase.table("fornecedor").select("*").ilike("Nome Fornecedor", fornecedor_nome.strip()).eq("empresa_id", empresa_atual).execute()
                             forn_info = res_forn_data.data[0] if res_forn_data.data else {"CNPJ": "00.000.000/0001-00", "Endereço": "N/D", "Contato Fornecedor": "N/D"}
 
                             buffer = io.BytesIO()
