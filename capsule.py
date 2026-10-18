@@ -815,9 +815,12 @@ else:
 
                     else:
                         try:
+                            # Busca todos os pedidos cadastrados na tabela de vencedores
                             res_v = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
                             df_pedido = pd.DataFrame(res_v.data if res_v.data else [])
+                            
                             if not df_pedido.empty and "NumeroPedido" in df_pedido.columns and "Fornecedor" in df_pedido.columns:
+                                # Filtra apenas pedidos que não foram completamente entregues (ou todos para conferência)
                                 df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
                                 pedido = st.selectbox("Selecione o Pedido para Recebimento", df_pedido["PedidoLabel"].unique().tolist())
 
@@ -846,15 +849,15 @@ else:
                                                 qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
                                                 novo_total = qtd_atual + int(qtd)
                                                 supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
-                                    
-                                    # CORREÇÃO: Atualiza explicitamente a situação do pedido para Entregue convertendo para int ou string
-                                    try:
-                                        supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", int(numero_pedido)).eq("empresa_id", empresa_atual).execute()
-                                    except Exception:
-                                        try:
-                                            supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", str(numero_pedido)).eq("empresa_id", empresa_atual).execute()
-                                        except Exception:
-                                            pass
+
+                                    # ATUALIZAÇÃO DEFINITIVA: Atualiza por ID de todos os itens do pedido para garantir alteração de estado
+                                    ids_para_atualizar = df_itens_pedido["id"].tolist() if "id" in df_itens_pedido.columns else []
+                                    if ids_para_atualizar:
+                                        for id_item in ids_para_atualizar:
+                                            supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("id", id_item).execute()
+                                    else:
+                                        # Fallback por número do pedido e fornecedor
+                                        supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("Fornecedor", fornecedor).eq("empresa_id", empresa_atual).execute()
 
                                     registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido} - Entregue")
                                     st.success("Estoque atualizado e pedido marcado como Entregue com sucesso!")
@@ -870,6 +873,8 @@ else:
                         if not df_ped.empty:
                             if "Situacao" not in df_ped.columns:
                                 df_ped["Situacao"] = "Pendente"
+                            # Garante que valores vazios em 'Situacao' fiquem como 'Pendente'
+                            df_ped["Situacao"] = df_ped["Situacao"].fillna("Pendente")
                             st.dataframe(df_ped[["NumeroPedido", "Fornecedor", "Produto", "Preço Cotado", "Situacao"]], use_container_width=True)
                         else:
                             st.info("Nenhum pedido de compra registado.")
@@ -1114,7 +1119,6 @@ else:
                     texto_resposta_ia = "Chave de API do Gemini não configurada nos segredos do Streamlit Cloud."
                 else:
                     try:
-                        # Busca dados do Supabase da empresa atual para injetar contexto na IA
                         dados_contexto = f"Empresa Ativa: {empresa_atual}\n"
                         try:
                             res_est = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
