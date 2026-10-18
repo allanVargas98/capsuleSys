@@ -840,7 +840,8 @@ else:
                                 if st.button("Confirmar Recebimento"):
                                     for produto, qtd in recebimentos.items():
                                         if qtd > 0:
-                                            res_q = supabase.table("produto").select("id, Quantidade Produto").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).eq("empresa_id", empresa_atual).execute()
+                                            # CORREÇÃO: Utiliza select("*") para evitar problemas com espaços no nome da coluna Quantity/Quantidade Produto
+                                            res_q = supabase.table("produto").select("*").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).eq("empresa_id", empresa_atual).execute()
                                             if res_q.data:
                                                 row_p = res_q.data[0]
                                                 qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
