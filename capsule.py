@@ -71,6 +71,21 @@ st.markdown(page_bg_img, unsafe_allow_html=True)
 
 st.title("Capsule Sys")
 
+def obter_lista_empresas():
+    try:
+        res_emp = supabase.table("clientes_empresas").select("*").execute()
+        lista = []
+        if res_emp.data:
+            for item in res_emp.data:
+                nome = item.get("Nome Empresa") or item.get("nome_empresa") or item.get("NomeEmpresa")
+                if nome and nome not in lista:
+                    lista.append(str(nome))
+        if "DigiEvo Business LTDA" not in lista:
+            lista.insert(0, "DigiEvo Business LTDA")
+        return lista
+    except Exception:
+        return ["DigiEvo Business LTDA"]
+
 def tela_login():
     st.title("Login de Acesso")
     
@@ -151,15 +166,7 @@ else:
     st.sidebar.markdown(f"**Usuário:** `{usuario_atual}`")
 
     if is_master or usuario_atual.lower() == "admin":
-        try:
-            res_emp = supabase.table("clientes_empresas").select("*").execute()
-            lista_empresas_clientes = [e.get("Nome Empresa") for e in res_emp.data if e.get("Nome Empresa")] if res_emp.data else []
-        except Exception:
-            lista_empresas_clientes = []
-        
-        if "DigiEvo Business LTDA" not in lista_empresas_clientes:
-            lista_empresas_clientes.insert(0, "DigiEvo Business LTDA")
-
+        lista_empresas_clientes = obter_lista_empresas()
         empresa_atual = st.sidebar.selectbox(
             "Empresa (Alternar Cliente)", 
             lista_empresas_clientes, 
@@ -423,6 +430,7 @@ else:
                         }).execute()
                         registrar_log(usuario_atual, empresa_atual, "Nova Empresa Cadastrada", nome_empresa)
                         st.success("Empresa cadastrada com sucesso!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao salvar empresa: {e}")
 
@@ -442,15 +450,7 @@ else:
                     st.write("Gestão de Utilizadores e Permissões")
                     sub_aba_usuario = st.radio("Ação de Utilizador", ["Novo Utilizador", "Editar / Ativar-Inativar Utilizadores"], horizontal=True)
 
-                    try:
-                        res_emp = supabase.table("clientes_empresas").select("*").execute()
-                        dados_emp = res_emp.data if res_emp.data else []
-                        lista_emp_cadastradas = [e.get("Nome Empresa") for e in dados_emp if e.get("Nome Empresa")]
-                    except Exception:
-                        lista_emp_cadastradas = ["DigiEvo Business LTDA"]
-
-                    if "DigiEvo Business LTDA" not in lista_emp_cadastradas:
-                        lista_emp_cadastradas.insert(0, "DigiEvo Business LTDA")
+                    lista_emp_cadastradas = obter_lista_empresas()
 
                     if not is_master and usuario_atual.lower() != "admin":
                         lista_emp_cadastradas = [empresa_atual]
@@ -1014,14 +1014,21 @@ else:
                             estilo_normal.fontSize = 9
                             estilo_normal.leading = 11
 
-                            texto_cabecalho_empresa = f"""
-                            <b>{emp_info.get('Nome Empresa', empresa_atual)}</b><br/>
-                            CNPJ: {emp_info.get('CNPJ', 'N/D')}<br/>
-                            PEDIDO DE COMPRA: <b>#{numero_pedido}</b><br/>
-                            DATA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-                            """
-                            elementos.append(Paragraph(texto_cabecalho_empresa, estilo_normal))
-                            elementos.append(Spacer(1, 10))
+                            # Cabeçalho com Logótipo e Pedido em Destaque
+                            if os.path.exists("capsuleSys.png"):
+                                img_rl = RLImage("capsuleSys.png", width=120, height=45)
+                                txt_topo = Paragraph(f"<b>{emp_info.get('Nome Empresa', empresa_atual)}</b><br/>CNPJ: {emp_info.get('CNPJ', 'N/D')}<br/><font size=12 color='#003366'><b>PEDIDO DE COMPRA N° {numero_pedido}</b></font><br/>DATA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_normal)
+                                tbl_cab = Table([[txt_topo, img_rl]], colWidths=[380, 150])
+                                tbl_cab.setStyle(TableStyle([
+                                    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                                    ("ALIGN", (1,0), (1,0), "RIGHT")
+                                ]))
+                                elementos.append(tbl_cab)
+                            else:
+                                txt_topo = f"<b>{emp_info.get('Nome Empresa', empresa_atual)}</b><br/>CNPJ: {emp_info.get('CNPJ', 'N/D')}<br/><font size=12 color='#003366'><b>PEDIDO DE COMPRA N° {numero_pedido}</b></font><br/>DATA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+                                elementos.append(Paragraph(txt_topo, estilo_normal))
+
+                            elementos.append(Spacer(1, 15))
 
                             texto_fornecedor = f"""
                             <b>Fornecedor:</b> {forn_info.get('Nome Fornecedor', fornecedor_nome)}<br/>
@@ -1051,7 +1058,7 @@ else:
 
                             tabela_pdf = Table(dados_tabela, colWidths=[230, 70, 100, 100])
                             tabela_pdf.setStyle(TableStyle([
-                                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#333333")),
+                                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#003366")),
                                 ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
                                 ("ALIGN", (0,0), (-1,-1), "CENTER"),
                                 ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
