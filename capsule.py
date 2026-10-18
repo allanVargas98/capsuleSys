@@ -847,10 +847,14 @@ else:
                                                 novo_total = qtd_atual + int(qtd)
                                                 supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
                                     
+                                    # CORREÇÃO: Atualiza explicitamente a situação do pedido para Entregue convertendo para int ou string
                                     try:
                                         supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", int(numero_pedido)).eq("empresa_id", empresa_atual).execute()
                                     except Exception:
-                                        pass
+                                        try:
+                                            supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", str(numero_pedido)).eq("empresa_id", empresa_atual).execute()
+                                        except Exception:
+                                            pass
 
                                     registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido} - Entregue")
                                     st.success("Estoque atualizado e pedido marcado como Entregue com sucesso!")
@@ -1003,7 +1007,6 @@ else:
 
                             numero_pedido, fornecedor_nome = str(pedido).split(" - ", 1)
                             
-                            # CORREÇÃO: Utiliza .ilike() no campo "Nome Empresa" para evitar divergência de maiúsculas/minúsculas no CNPJ da empresa
                             res_emp_data = supabase.table("clientes_empresas").select("*").ilike("Nome Empresa", empresa_atual.strip()).execute()
                             emp_info = res_emp_data.data[0] if res_emp_data.data else {"CNPJ": "00.000.000/0001-00", "Nome Empresa": empresa_atual}
 
@@ -1019,7 +1022,6 @@ else:
                             estilo_normal.fontSize = 9
                             estilo_normal.leading = 11
 
-                            # Cabeçalho do PDF com Logótipo e Número do Pedido em Destaque
                             if os.path.exists("capsuleSys.png"):
                                 img_rl = RLImage("capsuleSys.png", width=120, height=45)
                                 txt_topo = Paragraph(f"<b>{emp_info.get('Nome Empresa', empresa_atual)}</b><br/>CNPJ: {emp_info.get('CNPJ', 'N/D')}<br/><font size=12 color='#003366'><b>PEDIDO DE COMPRA N° {numero_pedido}</b></font><br/>DATA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_normal)
@@ -1095,13 +1097,15 @@ else:
 
         case "IA":  
             st.subheader("ATLAS IA")
+            st.caption("A IA do Capsule Sys está integrada aos seus dados de estoque e preparada para responder dúvidas sobre o sistema e operações.")
+            
             if "lista_mensagem" not in st.session_state: 
                 st.session_state["lista_mensagem"] = []
 
             for mensagem in st.session_state["lista_mensagem"]:
                 st.chat_message(mensagem["role"]).write(mensagem["content"])
 
-            texto_user = st.chat_input("Digite Sua Mensagem")
+            texto_user = st.chat_input("Digite Sua Mensagem ou Pergunta")
             if texto_user:
                 st.chat_message("user").write(texto_user)
                 st.session_state["lista_mensagem"].append({"role": "user", "content": texto_user})
@@ -1110,7 +1114,35 @@ else:
                     texto_resposta_ia = "Chave de API do Gemini não configurada nos segredos do Streamlit Cloud."
                 else:
                     try:
-                        historico_chat = []
+                        # Busca dados do Supabase da empresa atual para injetar contexto na IA
+                        dados_contexto = f"Empresa Ativa: {empresa_atual}\n"
+                        try:
+                            res_est = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
+                            if res_est.data:
+                                df_e = pd.DataFrame(res_est.data)
+                                dados_contexto += f"\n--- ESTOQUE DE PRODUTOS ---\n{df_e.to_string(index=False)}\n"
+                        except Exception:
+                            pass
+
+                        try:
+                            res_aj = supabase.table("ajuste_estoque").select("*").eq("empresa_id", empresa_atual).execute()
+                            if res_aj.data:
+                                df_a = pd.DataFrame(res_aj.data)
+                                dados_contexto += f"\n--- AJUSTES / PERCAS DE ESTOQUE ---\n{df_a.to_string(index=False)}\n"
+                        except Exception:
+                            pass
+
+                        prompt_sistema = f"""
+                        Você é o ATLAS IA, o assistente inteligente oficial do ERP Capsule Sys.
+                        O seu objetivo é ajudar o utilizador a gerir o sistema, tirar dúvidas sobre como usar os módulos (ex: Módulo de Compras, Almoxarifado, Gerencial, etc.) e analisar os dados reais do banco de dados da empresa "{empresa_atual}" fornecidos abaixo.
+                        
+                        Dados Atuais do Sistema para Análise:
+                        {dados_contexto}
+                        
+                        Responda de forma clara, prestativa e objetiva em Português.
+                        """
+
+                        historico_chat = [{"role": "user", "parts": [{"text": prompt_sistema}]}]
                         for msg in st.session_state["lista_mensagem"]:
                             historico_chat.append({
                                 "role": msg["role"],
