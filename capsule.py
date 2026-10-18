@@ -896,26 +896,31 @@ else:
                             data_emissao = st.date_input("Data de Emissão do Pedido")
                             data_recebimento = st.date_input("Data de Recebimento do Pedido")
 
-                            st.subheader("Histórico de Preços Anteriores")
+                            # Prepara a tabela incluindo as colunas do último fornecedor e último preço pagos
+                            df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado].copy()
+                            df_filtrada["Preço Cotado"] = 0.0
+                            df_filtrada["Ultimo Fornecedor"] = "N/D"
+                            df_filtrada["Ultimo Preço R$"] = 0.0
+
                             try:
-                                res_cot_hist = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
+                                res_cot_hist = supabase.table("vencedores").select("Produto, Fornecedor, Preço Cotado").eq("empresa_id", empresa_atual).execute()
                                 df_hist = pd.DataFrame(res_cot_hist.data if res_cot_hist.data else [])
                                 if not df_hist.empty and "Produto" in df_hist.columns:
-                                    produtos_req = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado]["Produto"].unique()
-                                    df_ult_compras = df_hist[df_hist["Produto"].isin(produtos_req)]
-                                    if not df_ult_compras.empty:
-                                        st.dataframe(df_ult_compras[["Produto", "Fornecedor", "Preço Cotado"]], use_container_width=True)
-                                    else:
-                                        st.info("Sem histórico anterior para os produtos desta requisição.")
+                                    for idx, row in df_filtrada.iterrows():
+                                        prod_nome = row["Produto"]
+                                        match_prod = df_hist[df_hist["Produto"] == prod_nome]
+                                        if not match_prod.empty:
+                                            ult_reg = match_prod.iloc[-1]
+                                            df_filtrada.at[idx, "Ultimo Fornecedor"] = str(ult_reg.get("Fornecedor", "N/D"))
+                                            df_filtrada.at[idx, "Ultimo Preço R$"] = float(ult_reg.get("Preço Cotado", 0.0) or 0.0)
                             except Exception:
                                 pass
 
-                            df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado].copy()
-                            df_filtrada["Preço Cotado"] = 0.0
-                            df_editado = st.data_editor(df_filtrada)
+                            st.subheader("Itens da Requisição & Histórico de Última Compra")
+                            df_editado = st.data_editor(df_filtrada, use_container_width=True)
 
                             if st.button("Salvar Cotação"):
-                                for col_remover in ["Requisicao_Label", "id", "empresa_id"]:
+                                for col_remover in ["Requisicao_Label", "id", "empresa_id", "Ultimo Fornecedor", "Ultimo Preço R$"]:
                                     if col_remover in df_editado.columns:
                                         df_editado = df_editado.drop(columns=[col_remover])
 
@@ -1014,7 +1019,7 @@ else:
                             estilo_normal.fontSize = 9
                             estilo_normal.leading = 11
 
-                            # Cabeçalho com Logótipo e Pedido em Destaque
+                            # Cabeçalho do PDF com Logótipo e Número do Pedido em Destaque
                             if os.path.exists("capsuleSys.png"):
                                 img_rl = RLImage("capsuleSys.png", width=120, height=45)
                                 txt_topo = Paragraph(f"<b>{emp_info.get('Nome Empresa', empresa_atual)}</b><br/>CNPJ: {emp_info.get('CNPJ', 'N/D')}<br/><font size=12 color='#003366'><b>PEDIDO DE COMPRA N° {numero_pedido}</b></font><br/>DATA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_normal)
