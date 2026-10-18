@@ -443,10 +443,14 @@ else:
                     sub_aba_usuario = st.radio("Ação de Utilizador", ["Novo Utilizador", "Editar / Ativar-Inativar Utilizadores"], horizontal=True)
 
                     try:
-                        res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
-                        lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data if e.get("Nome Empresa")] if res_emp.data else ["DigiEvo Business LTDA"]
+                        res_emp = supabase.table("clientes_empresas").select("*").execute()
+                        dados_emp = res_emp.data if res_emp.data else []
+                        lista_emp_cadastradas = [e.get("Nome Empresa") for e in dados_emp if e.get("Nome Empresa")]
                     except Exception:
                         lista_emp_cadastradas = ["DigiEvo Business LTDA"]
+
+                    if "DigiEvo Business LTDA" not in lista_emp_cadastradas:
+                        lista_emp_cadastradas.insert(0, "DigiEvo Business LTDA")
 
                     if not is_master and usuario_atual.lower() != "admin":
                         lista_emp_cadastradas = [empresa_atual]
