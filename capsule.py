@@ -7,10 +7,10 @@ import base64
 import numpy as np
 import io
 from datetime import datetime, date
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image as RLImage, Spacer
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
@@ -152,10 +152,10 @@ else:
 
     if is_master or usuario_atual.lower() == "admin":
         try:
-            res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
-            lista_empresas_clientes = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["DigiEvo Business LTDA"]
+            res_emp = supabase.table("clientes_empresas").select("*").execute()
+            lista_empresas_clientes = [e.get("Nome Empresa") for e in res_emp.data if e.get("Nome Empresa")] if res_emp.data else []
         except Exception:
-            lista_empresas_clientes = ["DigiEvo Business LTDA"]
+            lista_empresas_clientes = []
         
         if "DigiEvo Business LTDA" not in lista_empresas_clientes:
             lista_empresas_clientes.insert(0, "DigiEvo Business LTDA")
@@ -444,7 +444,7 @@ else:
 
                     try:
                         res_emp = supabase.table("clientes_empresas").select("Nome Empresa").execute()
-                        lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data] if res_emp.data else ["DigiEvo Business LTDA"]
+                        lista_emp_cadastradas = [e["Nome Empresa"] for e in res_emp.data if e.get("Nome Empresa")] if res_emp.data else ["DigiEvo Business LTDA"]
                     except Exception:
                         lista_emp_cadastradas = ["DigiEvo Business LTDA"]
 
@@ -559,7 +559,8 @@ else:
                         nome_fornecedor = st.text_input("Razão Social")
                         email_fornecedor = st.text_input("E-mail")
                         cnpj_fornecedor = st.text_input("CNPJ")
-                        contato_fornecedor = st.text_input("Contato")
+                        endereco_fornecedor = st.text_input("Endereço Completo")
+                        contato_fornecedor = st.text_input("Contato / Telefone")
                         submitted = st.form_submit_button("Salvar Fornecedor")
                         if submitted:
                             try:
@@ -567,6 +568,7 @@ else:
                                     "Nome Fornecedor": nome_fornecedor,
                                     "E-mail Fornecedor": email_fornecedor,
                                     "CNPJ": cnpj_fornecedor,
+                                    "Endereço": endereco_fornecedor,
                                     "Contato Fornecedor": contato_fornecedor,
                                     "empresa_id": empresa_atual
                                 }).execute()
@@ -841,8 +843,10 @@ else:
                                                 novo_total = qtd_atual + int(qtd)
                                                 supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
                                     
-                                    # Atualiza situação do pedido para Entregue
-                                    supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", int(numero_pedido)).eq("empresa_id", empresa_atual).execute()
+                                    try:
+                                        supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("NumeroPedido", int(numero_pedido)).eq("empresa_id", empresa_atual).execute()
+                                    except Exception:
+                                        pass
 
                                     registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido} - Entregue")
                                     st.success("Estoque atualizado e pedido marcado como Entregue com sucesso!")
@@ -883,11 +887,11 @@ else:
 
                             requisicao_compra = st.selectbox("Requisição", df_req_gestao["Requisicao_Label"].unique().tolist())
                             req_fornecedor = st.selectbox("Escolha o Fornecedor", df_req_fornecedor["Nome Fornecedor"])
+                            tipo_frete = st.selectbox("Modalidade de Frete", ["CIF", "FOB"])
                             codigo_selecionado = str(requisicao_compra).split(" - ")[0]
                             data_emissao = st.date_input("Data de Emissão do Pedido")
                             data_recebimento = st.date_input("Data de Recebimento do Pedido")
 
-                            # Exibir histórico de último preço e data do produto na requisição
                             st.subheader("Histórico de Preços Anteriores")
                             try:
                                 res_cot_hist = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
@@ -913,6 +917,7 @@ else:
 
                                 df_editado["Requisição"] = str(requisicao_compra)
                                 df_editado["Fornecedor"] = str(req_fornecedor)
+                                df_editado["Frete"] = tipo_frete
                                 df_editado["Data Emissão"] = str(data_emissao)
                                 df_editado["Data Recebimento"] = str(data_recebimento)
                                 df_editado["empresa_id"] = empresa_atual
@@ -964,6 +969,8 @@ else:
                                     "Produto": str(prod),
                                     "Fornecedor": str(forn),
                                     "Preço Cotado": float(tabela.loc[prod, forn]),
+                                    "Quantidade": int(df_filtrado[(df_filtrado["Produto"] == prod) & (df_filtrado["Fornecedor"] == forn)]["Quantidade"].values[0]) if "Quantidade" in df_filtrado.columns else 1,
+                                    "Frete": str(df_filtrado[(df_filtrado["Produto"] == prod) & (df_filtrado["Fornecedor"] == forn)]["Frete"].values[0]) if "Frete" in df_filtrado.columns else "CIF",
                                     "Selecionado": True,
                                     "NumeroPedido": int(proximo_numero),
                                     "Situacao": "Pendente",
@@ -972,8 +979,6 @@ else:
 
                                 if selecionados:
                                     supabase.table("vencedores").insert(selecionados).execute()
-                                    
-                                    # Cálculo e mapeamento da economia gerada
                                     st.success(f"Vencedores definidos com sucesso! Número do pedido: {proximo_numero}")
                                     registrar_log(usuario_atual, empresa_atual, "Vencedores Definidos", f"Pedido: {proximo_numero}")
                     except Exception as e:
@@ -988,35 +993,77 @@ else:
                             df_pedido["PedidoLabel"] = df_pedido["NumeroPedido"].astype(str) + " - " + df_pedido["Fornecedor"].astype(str)
                             pedido = st.selectbox("Selecione um Pedido de Compra", df_pedido["PedidoLabel"].unique().tolist())
 
-                            numero_pedido, fornecedor = str(pedido).split(" - ", 1)
+                            numero_pedido, fornecedor_nome = str(pedido).split(" - ", 1)
+                            
+                            res_emp_data = supabase.table("clientes_empresas").select("*").eq("Nome Empresa", empresa_atual).execute()
+                            emp_info = res_emp_data.data[0] if res_emp_data.data else {"CNPJ": "00.000.000/0001-00", "Nome Empresa": empresa_atual}
+
+                            res_forn_data = supabase.table("fornecedor").select("*").eq("Nome Fornecedor", fornecedor_nome).eq("empresa_id", empresa_atual).execute()
+                            forn_info = res_forn_data.data[0] if res_forn_data.data else {"CNPJ": "00.000.000/0001-00", "Endereço": "N/D", "Contato Fornecedor": "N/D"}
+
                             buffer = io.BytesIO()
-                            doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+                            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
                             elementos = []
 
-                            if os.path.exists("capsuleSys.png"):
-                                logo = RLImage("capsuleSys.png", width=120, height=50)
-                                elementos.append(logo)
-                                elementos.append(Spacer(1, 10))
-
                             estilos = getSampleStyleSheet()
-                            elementos.append(Paragraph(f"<b>{empresa_atual}</b>", estilos["Heading2"]))
+                            estilo_normal = estilos["Normal"]
+                            estilo_normal.fontSize = 9
+                            estilo_normal.leading = 11
+
+                            texto_cabecalho_empresa = f"""
+                            <b>{emp_info.get('Nome Empresa', empresa_atual)}</b><br/>
+                            CNPJ: {emp_info.get('CNPJ', 'N/D')}<br/>
+                            PEDIDO DE COMPRA: <b>#{numero_pedido}</b><br/>
+                            DATA: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+                            """
+                            elementos.append(Paragraph(texto_cabecalho_empresa, estilo_normal))
+                            elementos.append(Spacer(1, 10))
+
+                            texto_fornecedor = f"""
+                            <b>Fornecedor:</b> {forn_info.get('Nome Fornecedor', fornecedor_nome)}<br/>
+                            <b>CNPJ:</b> {forn_info.get('CNPJ', 'N/D')}<br/>
+                            <b>Endereço:</b> {forn_info.get('Endereço', 'N/D')}<br/>
+                            <b>Contato:</b> {forn_info.get('Contato Fornecedor', 'N/D')}
+                            """
+                            elementos.append(Paragraph(texto_fornecedor, estilo_normal))
                             elementos.append(Spacer(1, 15))
-                            elementos.append(Paragraph(f"<b>Pedido de Compra #{numero_pedido}</b> - Fornecedor: {fornecedor}", estilos["Title"]))
-                            elementos.append(Spacer(1, 20))
 
-                            dados = [["Produto", "Fornecedor", "Preço Cotado"]]
-                            for _, row in df_pedido[(df_pedido["NumeroPedido"].astype(str) == numero_pedido) & (df_pedido["Fornecedor"] == fornecedor)].iterrows():
-                                dados.append([row["Produto"], row["Fornecedor"], f"R$ {float(row['Preço Cotado'] or 0):,.2f}"])
+                            df_itens_pedido = df_pedido[(df_pedido["NumeroPedido"].astype(str) == numero_pedido) & (df_pedido["Fornecedor"] == fornecedor_nome)]
+                            
+                            dados_tabela = [["Produto", "Quant", "Valor Unit", "Subtotal"]]
+                            subtotal_geral = 0.0
 
-                            tabela_pdf = Table(dados, colWidths=[400, 250, 100])
+                            for _, row in df_itens_pedido.iterrows():
+                                qtd = float(row.get("Quantidade", 1) or 1)
+                                vl_unit = float(row.get("Preço Cotado", 0.0) or 0.0)
+                                subtotal = qtd * vl_unit
+                                subtotal_geral += subtotal
+                                dados_tabela.append([
+                                    str(row.get("Produto", "")),
+                                    f"{qtd:,.2f}",
+                                    f"R$ {vl_unit:,.2f}",
+                                    f"R$ {subtotal:,.2f}"
+                                ])
+
+                            tabela_pdf = Table(dados_tabela, colWidths=[230, 70, 100, 100])
                             tabela_pdf.setStyle(TableStyle([
-                                ("BACKGROUND", (0,0), (-1,0), colors.grey),
+                                ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#333333")),
                                 ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
                                 ("ALIGN", (0,0), (-1,-1), "CENTER"),
                                 ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-                                ("GRID", (0,0), (-1,-1), 1, colors.black),
+                                ("FONTSIZE", (0,0), (-1,-1), 8),
+                                ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
                             ]))
                             elementos.append(tabela_pdf)
+                            elementos.append(Spacer(1, 15))
+
+                            frete_modalidade = df_itens_pedido.iloc[0].get("Frete", "CIF") if not df_itens_pedido.empty else "CIF"
+                            texto_totais = f"""
+                            <b>Modalidade de Frete:</b> {frete_modalidade}<br/>
+                            <b>Subtotal Geral:</b> R$ {subtotal_geral:,.2f}<br/>
+                            <b>Total Geral do Pedido:</b> R$ {subtotal_geral:,.2f}
+                            """
+                            elementos.append(Paragraph(texto_totais, estilo_normal))
 
                             doc.build(elementos)
                             buffer.seek(0)
@@ -1024,7 +1071,7 @@ else:
                             st.download_button(
                                 label="Baixar Pedido de Compra (PDF)",
                                 data=buffer,
-                                file_name=f"pedido_compra_{numero_pedido}_{fornecedor}.pdf",
+                                file_name=f"pedido_compra_{numero_pedido}_{fornecedor_nome}.pdf",
                                 mime="application/pdf"
                             )
                     except Exception as e:
