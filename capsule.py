@@ -278,7 +278,7 @@ else:
                     try:
                         res_f = supabase.table("fornecedor").select("*").eq("empresa_id", empresa_atual).execute()
                         df_recebedor = pd.DataFrame(res_f.data if res_f.data else [])
-                        forn_lista = df_recebedor["Nome Fornecedor"].tolist() if not df_recebedor.empty and "Nome Fornecedor" in df_recebedor.columns else []
+                        forn_lista = sorted(df_recebedor["Nome Fornecedor"].dropna().unique().tolist()) if not df_recebedor.empty and "Nome Fornecedor" in df_recebedor.columns else []
 
                         nota_fiscal = st.text_input("N° Nota Fiscal")
                         recebedor = st.selectbox("Fornecedor", forn_lista)
