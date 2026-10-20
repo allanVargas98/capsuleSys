@@ -732,30 +732,36 @@ else:
                 case "Ajuste de Estoque":
                     try:
                         res_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
-                        res_f = supabase.table("filial").select("*").eq("empresa_id", empresa_atual).execute()
                         df_produtos = pd.DataFrame(res_p.data if res_p.data else [])
-                        df_filial = pd.DataFrame(res_f.data if res_f.data else [])
+                        
+                        if not df_produtos.empty:
+                            df_produtos["Label_Prod"] = df_produtos["Descrição Produto"].astype(str) + " (Filial: " + df_produtos.get("Filial", "Todas").astype(str) + " - Atual: " + df_produtos.get("Quantidade Produto", 0).astype(str) + ")"
+                            
+                            produto_selecionado_label = st.selectbox("Selecione o Produto", df_produtos["Label_Prod"].tolist())
+                            produto_obj = df_produtos[df_produtos["Label_Prod"] == produto_selecionado_label].iloc[0]
+                            
+                            ajuste_quantidade = st.number_input("Nova Quantidade", min_value=0, value=int(produto_obj.get("Quantidade Produto", 0) or 0))
+                            ajuste_motivos = st.selectbox("Motivo Ajuste", ["Avaria", "Inventário", "Consumo"])
 
-                        prod_lista = df_produtos["Descrição Produto"].tolist() if not df_produtos.empty and "Descrição Produto" in df_produtos.columns else []
-                        fil_lista = df_filial["Nome"].tolist() if not df_filial.empty and "Nome" in df_filial.columns else []
+                            if st.button("Salvar Ajuste"):
+                                produto_id = produto_obj["id"]
+                                nome_prod = produto_obj["Descrição Produto"]
+                                
+                                supabase.table("ajuste_estoque").insert({
+                                    "Produto": str(nome_prod),
+                                    "Quantidade": int(ajuste_quantidade),
+                                    "Motivo Ajuste": ajuste_motivos,
+                                    "Filial": str(produto_obj.get("Filial", "Todas")),
+                                    "empresa_id": empresa_atual
+                                }).execute()
 
-                        ajuste_produto = st.selectbox("Produto", prod_lista)
-                        ajuste_quantidade = st.number_input("Nova Quantidade", min_value=0)
-                        ajuste_motivos = st.selectbox("Motivo Ajuste", ["Avaria", "Inventário", "Consumo"])
-                        ajuste_filial = st.selectbox("Filial Ajuste", fil_lista)         
-
-                        if st.button("Salvar Ajuste"):
-                            supabase.table("ajuste_estoque").insert({
-                                "Produto": ajuste_produto,
-                                "Quantidade": int(ajuste_quantidade),
-                                "Motivo Ajuste": ajuste_motivos,
-                                "Filial": ajuste_filial,
-                                "empresa_id": empresa_atual
-                            }).execute()
-
-                            supabase.table("produto").update({"Quantidade Produto": int(ajuste_quantidade)}).eq("Descrição Produto", ajuste_produto).eq("Filial", ajuste_filial).eq("empresa_id", empresa_atual).execute()
-                            registrar_log(usuario_atual, empresa_atual, "Ajuste Estoque", f"Produto: {ajuste_produto} | Qtd: {ajuste_quantidade}")
-                            st.success("Ajuste Realizado com Sucesso!")
+                                supabase.table("produto").update({"Quantidade Produto": int(ajuste_quantidade)}).eq("id", produto_id).execute()
+                                
+                                registrar_log(usuario_atual, empresa_atual, "Ajuste Estoque", f"Produto: {nome_prod} | Nova Qtd: {ajuste_quantidade}")
+                                st.success("Ajuste Realizado com Sucesso! O estoque foi atualizado.")
+                                st.rerun()
+                        else:
+                            st.info("Nenhum produto cadastrado para realizar ajuste.")
                     except Exception as e:
                         st.error(f"Erro no ajuste de estoque: {e}")
 
@@ -840,14 +846,17 @@ else:
                                 if st.button("Confirmar Recebimento"):
                                     for produto, qtd in recebimentos.items():
                                         if qtd > 0:
-                                            res_q = supabase.table("produto").select("*").eq("Descrição Produto", produto).eq("Filial", filial_escolhida).eq("empresa_id", empresa_atual).execute()
-                                            if res_q.data:
-                                                row_p = res_q.data[0]
+                                            # Tenta encontrar correspondência exata por descrição e filial, ou atualiza o primeiro produto correspondente se a filial for 'Todas'
+                                            res_q = supabase.table("produto").select("*").eq("Descrição Produto", produto).eq("empresa_id", empresa_atual).execute()
+                                            prod_matches = res_q.data if res_q.data else []
+                                            
+                                            if prod_matches:
+                                                # Procura filial exata ou pega a primeira disponível
+                                                row_p = next((p for p in prod_matches if p.get("Filial") == filial_escolhida), prod_matches[0])
                                                 qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
                                                 novo_total = qtd_atual + int(qtd)
                                                 supabase.table("produto").update({"Quantidade Produto": novo_total}).eq("id", row_p["id"]).execute()
                                     
-                                    # Tenta atualizar a situação para Entregue de forma segura (sem gerar erro se a coluna não existir)
                                     try:
                                         ids_para_atualizar = df_itens_pedido["id"].tolist() if "id" in df_itens_pedido.columns else []
                                         if ids_para_atualizar:
