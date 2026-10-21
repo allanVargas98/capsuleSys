@@ -1,22 +1,21 @@
 import streamlit as st
 import pandas as pd
 import os
-from PIL import Image
 import google.genai as genai
 import base64
-import numpy as np
 import io
 from datetime import datetime, date
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image as RLImage, Spacer
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfgen import canvas
 from supabase import create_client, Client
 
-# Configuração do Supabase
-SUPABASE_URL = "https://vhhpetifyuawfiuzdrsu.supabase.co"
-SUPABASE_KEY = "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR"
+# ==========================================
+# CONFIGURAÇÃO DE SEGURANÇA E CONEXÃO
+# ==========================================
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://vhhpetifyuawfiuzdrsu.supabase.co")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_2UpNmtRVpMTMXwYYa_0Kkw_oPc5A2jR")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Configuração Segura do Google Gemini IA
@@ -28,11 +27,16 @@ except Exception:
 
 modelo = "models/gemini-3-flash-preview"
 
-# Funções Utilitárias & Auditoria
-def registrar_log(Usuario, empresa, acao, detalhe=""):
+# ==========================================
+# AUDITORIA E LOGS
+# ==========================================
+def registrar_log(usuario, empresa, acao, detalhe=""):
+    """
+    Regista açōes criticas do utilizador no banco de dados para fins de rastreabilidade.
+    """
     try:
         supabase.table("audit_logs").insert({
-            "usuario": Usuario,
+            "usuario": usuario,
             "empresa_id": empresa,
             "acao": acao,
             "detalhe": detalhe,
@@ -55,22 +59,22 @@ page_bg_img = f"""
 <style>
 [data-testid="stAppViewContainer"] {{
     background-image: url("data:image/png;base64,{img_base64}");
-    background-size: 20%;
-    background-position: right;
+    background-size: 18%;
+    background-position: right top;
     background-repeat: no-repeat;
 }}
 [data-testid="stHeader"] {{
     background: rgba(0,0,0,0);
 }}
-[data-testid="stToolbar"] {{
-    right: 2rem;
-}}
 </style>
 """
 st.markdown(page_bg_img, unsafe_allow_html=True)
 
-st.title("Capsule Sys")
+st.title("Capsule Sys — ERP de Gestão")
 
+# ==========================================
+# GESTÃO DE TENANTS & AUTENTICAÇÃO
+# ==========================================
 def obter_lista_empresas():
     try:
         res_emp = supabase.table("clientes_empresas").select("*").execute()
@@ -89,17 +93,18 @@ def obter_lista_empresas():
 def tela_login():
     st.title("Login de Acesso")
     
-    Usuario_input = st.text_input("Usuário", value="")
+    usuario_input = st.text_input("Usuário", value="")
     senha_input = st.text_input("Senha", type="password", value="")
 
-    if st.button("Entrar"):
-        u_limpo = Usuario_input.strip()
+    if st.button("Entrar", type="primary"):
+        u_limpo = usuario_input.strip()
         s_limpa = senha_input.strip()
 
         if not u_limpo or not s_limpa:
             st.warning("Por favor, preencha o usuário e a senha.")
             return
 
+        # Credencial Mestra de Recuperação / Admin Geral
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -163,19 +168,19 @@ else:
     usuario_atual = st.session_state.get("usuario", "admin")
     is_master = st.session_state.get("is_master", False)
     
-    st.sidebar.markdown(f"**Usuário:** `{usuario_atual}`")
+    st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
 
     if is_master or usuario_atual.lower() == "admin":
         lista_empresas_clientes = obter_lista_empresas()
         empresa_atual = st.sidebar.selectbox(
-            "Empresa (Alternar Cliente)", 
+            "🏢 Empresa (Alternar Cliente)", 
             lista_empresas_clientes, 
             index=lista_empresas_clientes.index(st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")) if st.session_state.get("empresa_ativa") in lista_empresas_clientes else 0
         )
         st.session_state["empresa_ativa"] = empresa_atual
     else:
         empresa_atual = st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")
-        st.sidebar.markdown(f"**Empresa:** `{empresa_atual}`")
+        st.sidebar.markdown(f"🏢 **Empresa:** `{empresa_atual}`")
 
     todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
@@ -185,13 +190,16 @@ else:
     else:
         modulos_permitidos = [m for m in todos_modulos if m in permissoes_usuario or m == "Desconectar"]
 
-    menu = st.sidebar.radio("Ferramentas", modulos_permitidos)
+    menu = st.sidebar.radio("Navegação ERP", modulos_permitidos)
 
+    # ==========================================
+    # LÓGICA DOS MÓDULOS
+    # ==========================================
     match menu:
         case "Gráficos Gerenciais":
             st.header(f"Painel Executivo — {empresa_atual}")
             
-            st.subheader("Riscos de Faltas")
+            st.subheader("⚠️ Alertas de Estoque & Pendências")
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
@@ -205,7 +213,7 @@ else:
                             st.warning(f"**{len(baixos)} produto(s)** com estoque crítico (≤ 5 un.):")
                             st.dataframe(baixos[["Descrição Produto", "Quantidade Produto", "Filial"]], use_container_width=True)
                         else:
-                            st.success("Estoque em níveis normais.")
+                            st.success("Estoque em níveis ideais.")
                 except Exception:
                     pass
 
@@ -256,7 +264,7 @@ else:
                     st.metric(label="Total Contas a Pagar (Abertas)", value="R$ 0,00")
 
         case "Gerencial":
-            st.write("Módulo Gerencial & Financeiro")
+            st.header("Módulo Gerencial & Financeiro")
             op_gerencial = st.radio("Escolha uma Opção:", ["Fluxo de Caixa", "Contas a Pagar", "Contas a Receber", "DRE Gerencial", "Exportação de Dados"], horizontal=True)
             
             match op_gerencial:
@@ -659,8 +667,8 @@ else:
                                 st.error(f"Erro ao salvar filial: {e}")                        
 
         case "Almox":
-            st.write("Almoxarifado")
-            menu_almox = st.radio("Escolha uma Opção", ["Consulta Estoque", "Requisição de Compras", "Ajuste de Estoque", "Recebimento", "Situação de Pedidos"], horizontal=True)
+            st.header("Almoxarifado & Gestão de Materiais")
+            menu_almox = st.radio("Escolha uma Opção", ["Consulta Estoque", "Requisição de Compras", "Consumo Direto / Aplicação", "Ajuste de Estoque", "Recebimento", "Situação de Pedidos"], horizontal=True)
 
             match menu_almox:
                 case "Consulta Estoque":
@@ -692,8 +700,8 @@ else:
                         produto_escolhido = st.selectbox("Produto", prod_lista)
                         quantidade = st.number_input("Quantidade", min_value=1)
                         filial = st.selectbox("Filial Solicitante", fil_lista)
-                        nome_projeto = st.selectbox("Descrição do Projeto", proj_desc)
-                        n_projeto = st.selectbox("Número Projeto; OS", proj_num)
+                        nome_projeto = st.selectbox("Descrição do Projeto / Obra", proj_desc)
+                        n_projeto = st.selectbox("Número Projeto / OS", proj_num)
 
                         if "item_requisicao" not in st.session_state:
                             st.session_state.item_requisicao = []
@@ -722,12 +730,60 @@ else:
                             except Exception:
                                 novo_codigo = 1
 
-                            nova_requisicao = [{"Codigo": novo_codigo, **item} for item in st.session_state.item_requisicao]
+                            # Definir status inicial do workflow de aprovação
+                            nova_requisicao = [{
+                                "Codigo": novo_codigo, 
+                                "Status": "Aguardando Aprovação", 
+                                **item
+                            } for item in st.session_state.item_requisicao]
+                            
                             supabase.table("requisicoes").insert(nova_requisicao).execute()
-                            registrar_log(usuario_atual, empresa_atual, "Nova Requisição", f"Código: {novo_codigo}")
-                            st.success(f"Pedido de Compra {novo_codigo} salvo com sucesso!")
+                            registrar_log(usuario_atual, empresa_atual, "Nova Requisição Criada", f"Código: {novo_codigo} (Aguardando Aprovação)")
+                            st.success(f"Requisição N° {novo_codigo} gravada e enviada para Aprovação do Gestor!")
+                            st.session_state.item_requisicao = []
                     except Exception as e:
                         st.error(f"Erro na requisição: {e}")
+
+                case "Consumo Direto / Aplicação":
+                    st.subheader("🏗️ Baixa de Material por Aplicação em Obra / Frota")
+                    st.caption("Registre a saída de materiais do estoque para aplicação direta em uma obra ou embarcação.")
+                    try:
+                        res_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
+                        res_proj = supabase.table("projeto").select("*").eq("empresa_id", empresa_atual).execute()
+                        df_p = pd.DataFrame(res_p.data if res_p.data else [])
+                        df_proj = pd.DataFrame(res_proj.data if res_proj.data else [])
+
+                        if not df_p.empty and not df_proj.empty:
+                            prod_sel = st.selectbox("Selecione o Material", df_p["Descrição Produto"].unique().tolist())
+                            proj_sel = st.selectbox("Selecione o Projeto / Obra Destino", df_proj["Descrição"].unique().tolist())
+                            
+                            row_prod = df_p[df_p["Descrição Produto"] == prod_sel].iloc[0]
+                            qtd_disp = int(row_prod.get("Quantidade Produto", 0) or 0)
+                            
+                            st.info(f"Quantidade disponível em estoque: **{qtd_disp} un.**")
+                            qtd_consumo = st.number_input("Quantidade Aplicada/Consumida", min_value=1, max_value=max(1, qtd_disp), step=1)
+                            obs_consumo = st.text_input("Observação / Canteiro / Local Exato")
+
+                            if st.button("Confirmar Consumo Direto"):
+                                nova_qtd = qtd_disp - int(qtd_consumo)
+                                supabase.table("produto").update({"Quantidade Produto": nova_qtd}).eq("id", row_prod["id"]).execute()
+                                
+                                # Registrar historico de consumo
+                                supabase.table("ajuste_estoque").insert({
+                                    "Produto": str(prod_sel),
+                                    "Quantidade": int(qtd_consumo),
+                                    "Motivo Ajuste": f"Consumo Direto / Obra: {proj_sel} ({obs_consumo})",
+                                    "Filial": str(row_prod.get("Filial", "Todas")),
+                                    "empresa_id": empresa_atual
+                                }).execute()
+
+                                registrar_log(usuario_atual, empresa_atual, "Consumo Direto Obra", f"Material: {prod_sel} | Qtd: {qtd_consumo} | Obra: {proj_sel}")
+                                st.success("Consumo registrado com sucesso! Estoque atualizado.")
+                                st.rerun()
+                        else:
+                            st.warning("É necessário ter produtos e projetos cadastrados para registrar o consumo.")
+                    except Exception as e:
+                        st.error(f"Erro ao registrar consumo: {e}")
 
                 case "Ajuste de Estoque":
                     try:
@@ -741,7 +797,7 @@ else:
                             produto_obj = df_produtos[df_produtos["Label_Prod"] == produto_selecionado_label].iloc[0]
                             
                             ajuste_quantidade = st.number_input("Nova Quantidade", min_value=0, value=int(produto_obj.get("Quantidade Produto", 0) or 0))
-                            ajuste_motivos = st.selectbox("Motivo Ajuste", ["Avaria", "Inventário", "Consumo"])
+                            ajuste_motivos = st.selectbox("Motivo Ajuste", ["Avaria", "Inventário", "Perda/Dano em Obra", "Ajuste Técnico"])
 
                             if st.button("Salvar Ajuste"):
                                 produto_id = produto_obj["id"]
@@ -779,8 +835,6 @@ else:
                                 numero_nota_fiscal = st.text_input("Número da Nota Fiscal (NF)", placeholder="Ex: 001234")
                             with col_doc2:
                                 cod_barras_boleto = st.text_input("Linha Digitável / Código de Barras do Boleto", placeholder="Cole ou digite a linha digitável")
-                            
-                            foto_boleto_nf = st.file_uploader("Upload / Foto do Boleto ou NF (PNG, JPG, PDF)", type=["png", "jpg", "jpeg", "pdf"])
 
                         st.divider()
 
@@ -838,6 +892,8 @@ else:
                                 filiais = df_produto["Filial"].unique().tolist() if not df_produto.empty and "Filial" in df_produto.columns else []
                                 filial_escolhida = st.selectbox("Selecione a Filial de Entrada", filiais)
 
+                                novo_status_recebimento = st.selectbox("Status de Entrega", ["Entregue Total", "Entregue Parcial", "Em Trânsito", "Aguardando Faturamento"])
+
                                 recebimentos = {}
                                 for _, row in df_itens_pedido.iterrows():
                                     qtd_recebida = st.number_input(f"Quantidade recebida de {row['Produto']}", min_value=0, step=1)
@@ -846,12 +902,10 @@ else:
                                 if st.button("Confirmar Recebimento"):
                                     for produto, qtd in recebimentos.items():
                                         if qtd > 0:
-                                            # Tenta encontrar correspondência exata por descrição e filial, ou atualiza o primeiro produto correspondente se a filial for 'Todas'
                                             res_q = supabase.table("produto").select("*").eq("Descrição Produto", produto).eq("empresa_id", empresa_atual).execute()
                                             prod_matches = res_q.data if res_q.data else []
                                             
                                             if prod_matches:
-                                                # Procura filial exata ou pega a primeira disponível
                                                 row_p = next((p for p in prod_matches if p.get("Filial") == filial_escolhida), prod_matches[0])
                                                 qtd_atual = int(row_p.get("Quantidade Produto", 0) or 0)
                                                 novo_total = qtd_atual + int(qtd)
@@ -861,12 +915,12 @@ else:
                                         ids_para_atualizar = df_itens_pedido["id"].tolist() if "id" in df_itens_pedido.columns else []
                                         if ids_para_atualizar:
                                             for id_item in ids_para_atualizar:
-                                                supabase.table("vencedores").update({"Situacao": "Entregue"}).eq("id", id_item).execute()
+                                                supabase.table("vencedores").update({"Situacao": novo_status_recebimento}).eq("id", id_item).execute()
                                     except Exception:
                                         pass
 
-                                    registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido} - Entregue")
-                                    st.success("Estoque atualizado e recebimento registado com sucesso!")
+                                    registrar_log(usuario_atual, empresa_atual, "Recebimento Mercadoria", f"Pedido: {numero_pedido} - Status: {novo_status_recebimento}")
+                                    st.success(f"Estoque atualizado e status alterado para '{novo_status_recebimento}'!")
                                     st.rerun()
                         except Exception as e:
                             st.error(f"Erro no recebimento: {e}")
@@ -887,9 +941,54 @@ else:
                         st.error(f"Erro ao carregar pedidos: {e}")
 
         case "Compras":
-            st.write("Módulo de Compras")
-            escolha_compras = st.radio("Escolha uma Opção:", ["Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
+            st.header("Módulo de Compras & Gestão de Suprimentos")
+            escolha_compras = st.radio("Escolha uma Opção:", ["Aprovação de Requisições", "Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
             match escolha_compras:
+                case "Aprovação de Requisições":
+                    st.subheader("📋 Central de Aprovação de Requisições (Workflow do Gestor)")
+                    try:
+                        res_reqs = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
+                        df_reqs = pd.DataFrame(res_reqs.data if res_reqs.data else [])
+                        
+                        if not df_reqs.empty:
+                            if "Status" not in df_reqs.columns:
+                                df_reqs["Status"] = "Aprovado"
+                            df_reqs["Status"] = df_reqs["Status"].fillna("Aguardando Aprovação")
+
+                            pendentes = df_reqs[df_reqs["Status"] == "Aguardando Aprovação"]
+                            
+                            if not pendentes.empty:
+                                st.warning(f"Existem **{len(pendentes)} item(ns)** aguardando aprovação técnica/gestora:")
+                                for idx, row in pendentes.iterrows():
+                                    with st.expander(f"Requisição Cod: {row.get('Codigo')} - Item: {row.get('Produto')} (Obra: {row.get('Nome Projeto', 'N/D')})"):
+                                        st.write(f"**Quantidade:** {row.get('Quantidade')}")
+                                        st.write(f"**Filial:** {row.get('Filial Requisitante')}")
+                                        st.write(f"**Projeto:** {row.get('Nome Projeto')} (OS: {row.get('N° Projeto')})")
+                                        
+                                        col_ap1, col_ap2 = st.columns(2)
+                                        with col_ap1:
+                                            if st.button("✅ Aprovar Requisição", key=f"ap_{row.get('id')}"):
+                                                supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row.get("id")).execute()
+                                                registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
+                                                st.success("Requisição Aprovada!")
+                                                st.rerun()
+                                        with col_ap2:
+                                            if st.button("❌ Recusar / Rejeitar", key=f"rec_{row.get('id')}"):
+                                                supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row.get("id")).execute()
+                                                registrar_log(usuario_atual, empresa_atual, "Recusa Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
+                                                st.error("Requisição Rejeitada!")
+                                                st.rerun()
+                            else:
+                                st.success("Nenhuma requisição pendente de aprovação.")
+
+                            st.divider()
+                            st.subheader("Histórico Geral de Requisições")
+                            st.dataframe(df_reqs[["Codigo", "Produto", "Quantidade", "Nome Projeto", "Status"]], use_container_width=True)
+                        else:
+                            st.info("Nenhuma requisição registrada.")
+                    except Exception as e:
+                        st.error(f"Erro ao carregar workflow de aprovação: {e}")
+
                 case "Gestão de Compras":
                     try:
                         res_r = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
@@ -898,12 +997,16 @@ else:
                         df_req_gestao = pd.DataFrame(res_r.data if res_r.data else [])
                         df_req_fornecedor = pd.DataFrame(res_f.data if res_f.data else [])
 
+                        # Filtrar apenas requisições aprovadas para faturar
+                        if not df_req_gestao.empty and "Status" in df_req_gestao.columns:
+                            df_req_gestao = df_req_gestao[df_req_gestao["Status"] == "Aprovado"]
+
                         if not df_req_gestao.empty and not df_req_fornecedor.empty and "Codigo" in df_req_gestao.columns:
                             df_req_gestao["Codigo"] = df_req_gestao["Codigo"].fillna(0).astype(str)
                             df_req_gestao["Nome Projeto"] = df_req_gestao.get("Nome Projeto", "").fillna("").astype(str)
                             df_req_gestao["Requisicao_Label"] = df_req_gestao["Codigo"] + " - " + df_req_gestao["Nome Projeto"]
 
-                            requisicao_compra = st.selectbox("Requisição", df_req_gestao["Requisicao_Label"].unique().tolist())
+                            requisicao_compra = st.selectbox("Requisição Aprovada", df_req_gestao["Requisicao_Label"].unique().tolist())
                             req_fornecedor = st.selectbox("Escolha o Fornecedor", df_req_fornecedor["Nome Fornecedor"])
                             tipo_frete = st.selectbox("Modalidade de Frete", ["CIF", "FOB"])
                             codigo_selecionado = str(requisicao_compra).split(" - ")[0]
@@ -933,7 +1036,7 @@ else:
                             df_editado = st.data_editor(df_filtrada, use_container_width=True)
 
                             if st.button("Salvar Cotação"):
-                                for col_remover in ["Requisicao_Label", "id", "empresa_id", "Ultimo Fornecedor", "Ultimo Preço R$"]:
+                                for col_remover in ["Requisicao_Label", "id", "empresa_id", "Ultimo Fornecedor", "Ultimo Preço R$", "Status"]:
                                     if col_remover in df_editado.columns:
                                         df_editado = df_editado.drop(columns=[col_remover])
 
@@ -949,7 +1052,7 @@ else:
                                 registrar_log(usuario_atual, empresa_atual, "Cotação Registada", f"Fornecedor: {req_fornecedor}")
                                 st.success("Cotação salva com sucesso!")
                         else:
-                            st.info("Cadastre requisições e fornecedores primeiro.")
+                            st.info("Sem requisições aprovadas disponíveis para cotação.")
                     except Exception as e:
                         st.error(f"Erro na gestão de compras: {e}")
 
@@ -1106,8 +1209,8 @@ else:
                         st.error(f"Erro ao gerar pedido: {e}")
 
         case "IA":  
-            st.subheader("ATLAS IA")
-            st.caption("A IA do Capsule Sys está integrada aos seus dados de estoque e preparada para responder dúvidas sobre o sistema e operações.")
+            st.subheader("ATLAS IA — Inteligência Estratégica & Análise de Dados")
+            st.caption("O ATLAS IA analisa o banco de dados em tempo real para responder sobre estoques, cotações e saúde financeira da sua empresa.")
             
             if "lista_mensagem" not in st.session_state: 
                 st.session_state["lista_mensagem"] = []
@@ -1115,13 +1218,13 @@ else:
             for mensagem in st.session_state["lista_mensagem"]:
                 st.chat_message(mensagem["role"]).write(mensagem["content"])
 
-            texto_user = st.chat_input("Digite Sua Mensagem ou Pergunta")
+            texto_user = st.chat_input("Pergunte ao ATLAS (Ex: Qual o valor orçado x realizado das obras?)")
             if texto_user:
                 st.chat_message("user").write(texto_user)
                 st.session_state["lista_mensagem"].append({"role": "user", "content": texto_user})
 
                 if not client:
-                    texto_resposta_ia = "Chave de API do Gemini não configurada nos segredos do Streamlit Cloud."
+                    texto_resposta_ia = "Chave de API do Gemini não configurada nos segredos (`st.secrets`)."
                 else:
                     try:
                         dados_contexto = f"Empresa Ativa: {empresa_atual}\n"
@@ -1134,21 +1237,19 @@ else:
                             pass
 
                         try:
-                            res_aj = supabase.table("ajuste_estoque").select("*").eq("empresa_id", empresa_atual).execute()
-                            if res_aj.data:
-                                df_a = pd.DataFrame(res_aj.data)
-                                dados_contexto += f"\n--- AJUSTES / PERCAS DE ESTOQUE ---\n{df_a.to_string(index=False)}\n"
+                            res_proj = supabase.table("projeto").select("*").eq("empresa_id", empresa_atual).execute()
+                            if res_proj.data:
+                                df_pr = pd.DataFrame(res_proj.data)
+                                dados_contexto += f"\n--- PROJETOS / OBRAS ---\n{df_pr.to_string(index=False)}\n"
                         except Exception:
                             pass
 
                         prompt_sistema = f"""
-                        Você é o ATLAS IA, o assistente inteligente oficial do ERP Capsule Sys.
-                        O seu objetivo é ajudar o utilizador a gerir o sistema, tirar dúvidas sobre como usar os módulos (ex: Módulo de Compras, Almoxarifado, Gerencial, etc.) e analisar os dados reais do banco de dados da empresa "{empresa_atual}" fornecidos abaixo.
+                        Você é o ATLAS IA, assistente inteligente corporativo do ERP Capsule Sys.
+                        Analise os dados reais da empresa "{empresa_atual}" abaixo para responder de forma concisa, técnica e útil para o gestor.
                         
-                        Dados Atuais do Sistema para Análise:
+                        Dados Atuais do Sistema:
                         {dados_contexto}
-                        
-                        Responda de forma clara, prestativa e objetiva em Português.
                         """
 
                         historico_chat = [{"role": "user", "parts": [{"text": prompt_sistema}]}]
@@ -1177,13 +1278,14 @@ else:
                 st.session_state["lista_mensagem"].append({"role": "assistant", "content": texto_resposta_ia})
 
         case "Contratos":
-            escolha_contratos = st.radio("Escolha uma opção:", ["Cadastro de Projeto", "Emissão de Contratos"], horizontal=True)
+            st.header("Módulo de Contratos & Gestão de Projetos")
+            escolha_contratos = st.radio("Escolha uma opção:", ["Cadastro de Projeto", "Relatório Orçado vs. Realizado", "Emissão de Contratos"], horizontal=True)
             match escolha_contratos:
                 case "Cadastro de Projeto":
                     with st.form("form_projeto"):
-                        nome_projeto = st.text_input("Nome do Projeto")
-                        n_projeto = st.text_input("Número do Projeto")
-                        valor_projeto = st.number_input("Valor previsto")
+                        nome_projeto = st.text_input("Nome do Projeto / Obra / Embarcação")
+                        n_projeto = st.text_input("Número do Projeto / OS")
+                        valor_projeto = st.number_input("Orçamento Previsto / Teto (R$)", min_value=0.0, step=1000.0)
                         submit = st.form_submit_button("Salvar Projeto")
                         if submit:
                             try:
@@ -1197,6 +1299,61 @@ else:
                                 st.success("Projeto Salvo com Sucesso!")
                             except Exception as e:
                                 st.error(f"Erro ao salvar projeto: {e}")        
+
+                case "Relatório Orçado vs. Realizado":
+                    st.subheader("📊 Controladoria de Obras & Projetos: Orçado vs. Realizado")
+                    try:
+                        res_proj = supabase.table("projeto").select("*").eq("empresa_id", empresa_atual).execute()
+                        df_proj = pd.DataFrame(res_proj.data if res_proj.data else [])
+
+                        if not df_proj.empty:
+                            res_pedidos = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
+                            df_v = pd.DataFrame(res_pedidos.data if res_pedidos.data else [])
+                            
+                            relatorio_dados = []
+                            for idx, row in df_proj.iterrows():
+                                nome_p = str(row.get("Descrição", "N/D"))
+                                num_p = str(row.get("Número Projeto", ""))
+                                orcado = float(row.get("Valor", 0.0) or 0.0)
+                                
+                                # Calcular realizado em compras/suprimentos
+                                realizado = 0.0
+                                if not df_v.empty:
+                                    # Filtra pedidos confirmados
+                                    pedidos_obra = df_v[df_v["Produto"].astype(str).str.contains(nome_p, case=False, na=False) | df_v.get("NumeroPedido", "").astype(str).str.contains(num_p, case=False, na=False)] if "Produto" in df_v.columns else pd.DataFrame()
+                                    if not pedidos_obra.empty:
+                                        realizado = (pedidos_obra["Quantidade"].astype(float) * pedidos_obra["Preço Cotado"].astype(float)).sum()
+
+                                saldo = orcado - realizado
+                                perc_gasto = (realizado / orcado * 100) if orcado > 0 else 0.0
+
+                                relatorio_dados.append({
+                                    "Obra / Projeto": nome_p,
+                                    "Cód. OS": num_p,
+                                    "Orçamento (R$)": orcado,
+                                    "Gasto Realizado (R$)": realizado,
+                                    "Saldo Disponível (R$)": saldo,
+                                    "% Comprometido": round(perc_gasto, 2)
+                                })
+
+                            df_rel = pd.DataFrame(relatorio_dados)
+                            
+                            # Métricas resumo
+                            tot_orc = df_rel["Orçamento (R$)"].sum()
+                            tot_real = df_rel["Gasto Realizado (R$)"].sum()
+                            
+                            m1, m2, m3 = st.columns(3)
+                            m1.metric("Total Orçado (Projetos)", f"R$ {tot_orc:,.2f}")
+                            m2.metric("Total Realizado em Compras", f"R$ {tot_real:,.2f}")
+                            m3.metric("Saldo Global", f"R$ {(tot_orc - tot_real):,.2f}")
+
+                            st.divider()
+                            st.dataframe(df_rel, use_container_width=True)
+                            st.bar_chart(df_rel.set_index("Obra / Projeto")[["Orçamento (R$)", "Gasto Realizado (R$)"]])
+                        else:
+                            st.info("Nenhum projeto cadastrado para análise.")
+                    except Exception as e:
+                        st.error(f"Erro ao consolidar relatório: {e}")
 
                 case "Emissão de Contratos":
                     try:
