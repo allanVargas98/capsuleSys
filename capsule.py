@@ -1227,6 +1227,39 @@ else:
             st.subheader("ATLAS IA — Inteligência Estratégica & Análise de Dados")
             st.caption("O ATLAS IA analisa o banco de dados em tempo real para responder sobre estoques, cotações e saúde financeira da sua empresa.")
             
+            def obter_contexto_completo_erp(empresa_alvo):
+                """
+                Consulta todas as tabelas principais do Supabase relativas à empresa ativa
+                para construir o contexto em tempo real do ATLAS IA.
+                """
+                dados_contexto = f"Empresa Ativa: {empresa_alvo}\n"
+                
+                tabelas_mapeadas = [
+                    ("PRODUTOS / ESTOQUE", "produto"),
+                    ("PROJETOS / OBRAS", "projeto"),
+                    ("REQUISIÇÕES DE COMPRA", "requisicoes"),
+                    ("COTAÇÕES DE COMPRA", "cotacoes"),
+                    ("VENCEDORES / PEDIDOS DE COMPRA", "vencedores"),
+                    ("FORNECEDORES CADASTRADOS", "fornecedor"),
+                    ("CONTAS A PAGAR", "contas_a_pagar"),
+                    ("CONTAS A RECEBER", "contas_a_receber"),
+                    ("FLUXO DE CAIXA", "fluxo_caixa"),
+                    ("CONTRATOS REGISTRADOS", "contrato")
+                ]
+
+                for titulo, nome_tabela in tabelas_mapeadas:
+                    try:
+                        res = supabase.table(nome_tabela).select("*").eq("empresa_id", empresa_alvo).execute()
+                        if res.data:
+                            df_t = pd.DataFrame(res.data)
+                            dados_contexto += f"\n--- {titulo} ---\n{df_t.to_string(index=False)}\n"
+                        else:
+                            dados_contexto += f"\n--- {titulo} ---\nSem registros para esta empresa.\n"
+                    except Exception:
+                        pass
+
+                return dados_contexto
+
             if "lista_mensagem" not in st.session_state: 
                 st.session_state["lista_mensagem"] = []
 
@@ -1242,28 +1275,13 @@ else:
                     texto_resposta_ia = "Chave de API do Gemini não configurada nos segredos (`st.secrets`)."
                 else:
                     try:
-                        dados_contexto = f"Empresa Ativa: {empresa_atual}\n"
-                        try:
-                            res_est = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
-                            if res_est.data:
-                                df_e = pd.DataFrame(res_est.data)
-                                dados_contexto += f"\n--- ESTOQUE DE PRODUTOS ---\n{df_e.to_string(index=False)}\n"
-                        except Exception:
-                            pass
-
-                        try:
-                            res_proj = supabase.table("projeto").select("*").eq("empresa_id", empresa_atual).execute()
-                            if res_proj.data:
-                                df_pr = pd.DataFrame(res_proj.data)
-                                dados_contexto += f"\n--- PROJETOS / OBRAS ---\n{df_pr.to_string(index=False)}\n"
-                        except Exception:
-                            pass
+                        dados_contexto = obter_contexto_completo_erp(empresa_atual)
 
                         prompt_sistema = f"""
-                        Você é o ATLAS IA, assistente inteligente corporativo do ERP Capsule Sys.
-                        Analise os dados reais da empresa "{empresa_atual}" abaixo para responder de forma concisa, técnica e útil para o gestor.
+                        Você é o ATLAS IA, assistente inteligente corporativo e analista estratégico do ERP Capsule Sys.
+                        Analise os dados reais do banco de dados da empresa "{empresa_atual}" abaixo para responder de forma precisa, técnica e útil para o gestor.
                         
-                        Dados Atuais do Sistema:
+                        Dados Atuais e Completos do Sistema (Supabase):
                         {dados_contexto}
                         """
 
