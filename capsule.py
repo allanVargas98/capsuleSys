@@ -32,7 +32,7 @@ modelo = "models/gemini-3-flash-preview"
 # ==========================================
 def registrar_log(usuario, empresa, acao, detalhe=""):
     """
-    Regista açōes criticas do utilizador no banco de dados para fins de rastreabilidade.
+    Regista açoes criticas do utilizador no banco de dados para fins de rastreabilidade.
     """
     try:
         supabase.table("audit_logs").insert({
@@ -168,19 +168,19 @@ else:
     usuario_atual = st.session_state.get("usuario", "admin")
     is_master = st.session_state.get("is_master", False)
     
-    st.sidebar.markdown(f"👤 **Usuário:** `{usuario_atual}`")
+    st.sidebar.markdown(f"**Usuário:** `{usuario_atual}`")
 
     if is_master or usuario_atual.lower() == "admin":
         lista_empresas_clientes = obter_lista_empresas()
         empresa_atual = st.sidebar.selectbox(
-            "🏢 Empresa (Alternar Cliente)", 
+            "Empresa (Alternar Cliente)", 
             lista_empresas_clientes, 
             index=lista_empresas_clientes.index(st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")) if st.session_state.get("empresa_ativa") in lista_empresas_clientes else 0
         )
         st.session_state["empresa_ativa"] = empresa_atual
     else:
         empresa_atual = st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")
-        st.sidebar.markdown(f"🏢 **Empresa:** `{empresa_atual}`")
+        st.sidebar.markdown(f"**Empresa:** `{empresa_atual}`")
 
     todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
@@ -199,7 +199,7 @@ else:
         case "Gráficos Gerenciais":
             st.header(f"Painel Executivo — {empresa_atual}")
             
-            st.subheader(" Alertas de Estoque & Pendências")
+            st.subheader("Alertas de Estoque & Pendências")
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
@@ -730,7 +730,6 @@ else:
                             except Exception:
                                 novo_codigo = 1
 
-                            # Definir status inicial do workflow de aprovação
                             nova_requisicao = [{
                                 "Codigo": novo_codigo, 
                                 "Status": "Aguardando Aprovação", 
@@ -745,7 +744,7 @@ else:
                         st.error(f"Erro na requisição: {e}")
 
                 case "Consumo Direto / Aplicação":
-                    st.subheader(" Baixa de Material por Aplicação")
+                    st.subheader("Baixa de Material por Aplicação")
                     st.caption("Registre a saída de materiais do estoque para aplicação direta em uma obra ou embarcação.")
                     try:
                         res_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
@@ -768,7 +767,6 @@ else:
                                 nova_qtd = qtd_disp - int(qtd_consumo)
                                 supabase.table("produto").update({"Quantidade Produto": nova_qtd}).eq("id", row_prod["id"]).execute()
                                 
-                                # Registrar historico de consumo
                                 supabase.table("ajuste_estoque").insert({
                                     "Produto": str(prod_sel),
                                     "Quantidade": int(qtd_consumo),
@@ -945,7 +943,7 @@ else:
             escolha_compras = st.radio("Escolha uma Opção:", ["Aprovação de Requisições", "Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
             match escolha_compras:
                 case "Aprovação de Requisições":
-                    st.subheader(" Central de Aprovação de Requisições (Workflow do Gestor)")
+                    st.subheader("Central de Aprovação de Requisições (Workflow do Gestor)")
                     try:
                         res_reqs = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
                         df_reqs = pd.DataFrame(res_reqs.data if res_reqs.data else [])
@@ -967,13 +965,13 @@ else:
                                         
                                         col_ap1, col_ap2 = st.columns(2)
                                         with col_ap1:
-                                            if st.button("✅ Aprovar Requisição", key=f"ap_{row.get('id')}"):
+                                            if st.button("Aprovar Requisição", key=f"ap_{row.get('id')}"):
                                                 supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row.get("id")).execute()
                                                 registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
                                                 st.success("Requisição Aprovada!")
                                                 st.rerun()
                                         with col_ap2:
-                                            if st.button("❌ Recusar / Rejeitar", key=f"rec_{row.get('id')}"):
+                                            if st.button("Recusar / Rejeitar", key=f"rec_{row.get('id')}"):
                                                 supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row.get("id")).execute()
                                                 registrar_log(usuario_atual, empresa_atual, "Recusa Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
                                                 st.error("Requisição Rejeitada!")
@@ -997,7 +995,6 @@ else:
                         df_req_gestao = pd.DataFrame(res_r.data if res_r.data else [])
                         df_req_fornecedor = pd.DataFrame(res_f.data if res_f.data else [])
 
-                        # Filtrar apenas requisições aprovadas para faturar
                         if not df_req_gestao.empty and "Status" in df_req_gestao.columns:
                             df_req_gestao = df_req_gestao[df_req_gestao["Status"] == "Aprovado"]
 
@@ -1301,7 +1298,7 @@ else:
                                 st.error(f"Erro ao salvar projeto: {e}")        
 
                 case "Relatório Orçado vs. Realizado":
-                    st.subheader("📊 Controladoria de Obras & Projetos: Orçado vs. Realizado")
+                    st.subheader("Controladoria de Obras & Projetos: Orçado vs. Realizado")
                     try:
                         res_proj = supabase.table("projeto").select("*").eq("empresa_id", empresa_atual).execute()
                         df_proj = pd.DataFrame(res_proj.data if res_proj.data else [])
@@ -1316,10 +1313,8 @@ else:
                                 num_p = str(row.get("Número Projeto", ""))
                                 orcado = float(row.get("Valor", 0.0) or 0.0)
                                 
-                                # Calcular realizado em compras/suprimentos
                                 realizado = 0.0
                                 if not df_v.empty:
-                                    # Filtra pedidos confirmados
                                     pedidos_obra = df_v[df_v["Produto"].astype(str).str.contains(nome_p, case=False, na=False) | df_v.get("NumeroPedido", "").astype(str).str.contains(num_p, case=False, na=False)] if "Produto" in df_v.columns else pd.DataFrame()
                                     if not pedidos_obra.empty:
                                         realizado = (pedidos_obra["Quantidade"].astype(float) * pedidos_obra["Preço Cotado"].astype(float)).sum()
@@ -1338,7 +1333,6 @@ else:
 
                             df_rel = pd.DataFrame(relatorio_dados)
                             
-                            # Métricas resumo
                             tot_orc = df_rel["Orçamento (R$)"].sum()
                             tot_real = df_rel["Gasto Realizado (R$)"].sum()
                             
