@@ -199,7 +199,7 @@ else:
         case "Gráficos Gerenciais":
             st.header(f"Painel Executivo — {empresa_atual}")
             
-            st.subheader("⚠️ Alertas de Estoque & Pendências")
+            st.subheader(" Alertas de Estoque & Pendências")
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
@@ -745,7 +745,7 @@ else:
                         st.error(f"Erro na requisição: {e}")
 
                 case "Consumo Direto / Aplicação":
-                    st.subheader("🏗️ Baixa de Material por Aplicação em Obra / Frota")
+                    st.subheader(" Baixa de Material por Aplicação")
                     st.caption("Registre a saída de materiais do estoque para aplicação direta em uma obra ou embarcação.")
                     try:
                         res_p = supabase.table("produto").select("*").eq("empresa_id", empresa_atual).execute()
@@ -945,7 +945,7 @@ else:
             escolha_compras = st.radio("Escolha uma Opção:", ["Aprovação de Requisições", "Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
             match escolha_compras:
                 case "Aprovação de Requisições":
-                    st.subheader("📋 Central de Aprovação de Requisições (Workflow do Gestor)")
+                    st.subheader(" Central de Aprovação de Requisições (Workflow do Gestor)")
                     try:
                         res_reqs = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
                         df_reqs = pd.DataFrame(res_reqs.data if res_reqs.data else [])
