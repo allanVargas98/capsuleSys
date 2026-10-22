@@ -32,7 +32,7 @@ modelo = "models/gemini-3-flash-preview"
 # ==========================================
 def registrar_log(usuario, empresa, acao, detalhe=""):
     """
-    Regista açoes criticas do utilizador no banco de dados para fins de rastreabilidade.
+    Regista acoes criticas do utilizador no banco de dados para fins de rastreabilidade.
     """
     try:
         supabase.table("audit_logs").insert({
@@ -1011,9 +1011,9 @@ else:
                             data_recebimento = st.date_input("Data de Recebimento do Pedido")
 
                             df_filtrada = df_req_gestao[df_req_gestao["Codigo"] == codigo_selecionado].copy()
-                            df_filtrada["Preço Cotado"] = 0.0
+                            df_filtrada["Preço Cotado"] = 0.00
                             df_filtrada["Ultimo Fornecedor"] = "N/D"
-                            df_filtrada["Ultimo Preço R$"] = 0.0
+                            df_filtrada["Ultimo Preço R$"] = 0.00
 
                             try:
                                 res_cot_hist = supabase.table("vencedores").select("Produto, Fornecedor, Preço Cotado").eq("empresa_id", empresa_atual).execute()
@@ -1030,19 +1030,29 @@ else:
                                 pass
 
                             st.subheader("Itens da Requisição & Histórico de Última Compra")
-                            df_editado = st.data_editor(df_filtrada, use_container_width=True)
+                            df_editado = st.data_editor(
+                                df_filtrada, 
+                                use_container_width=True,
+                                column_config={
+                                    "Preço Cotado": st.column_config.NumberColumn("Preço Cotado (R$)", format="R$ %.2f", min_value=0.0)
+                                }
+                            )
 
                             if st.button("Salvar Cotação"):
                                 for col_remover in ["Requisicao_Label", "id", "empresa_id", "Ultimo Fornecedor", "Ultimo Preço R$", "Status"]:
                                     if col_remover in df_editado.columns:
                                         df_editado = df_editado.drop(columns=[col_remover])
 
+                                df_editado["Codigo"] = codigo_selecionado
                                 df_editado["Requisição"] = str(requisicao_compra)
                                 df_editado["Fornecedor"] = str(req_fornecedor)
                                 df_editado["Frete"] = tipo_frete
                                 df_editado["Data Emissão"] = str(data_emissao)
                                 df_editado["Data Recebimento"] = str(data_recebimento)
                                 df_editado["empresa_id"] = empresa_atual
+                                
+                                # Garante conversao numerica exata do preco cotado
+                                df_editado["Preço Cotado"] = pd.to_numeric(df_editado["Preço Cotado"], errors="coerce").fillna(0.0)
                                 
                                 dados_inserir = df_editado.to_dict(orient="records")
                                 supabase.table("cotacoes").insert(dados_inserir).execute()
@@ -1061,20 +1071,28 @@ else:
                             codigos_unicos = df["Codigo"].unique().tolist()
                             codigo_escolhido = st.selectbox("Escolha o Código da Requisição", codigos_unicos)
 
-                            df_filtrado = df[df["Codigo"] == codigo_escolhido]
-                            tabela = df_filtrado.pivot_table(index="Produto", columns="Fornecedor", values="Preço Cotado")
+                            df_filtrado = df[df["Codigo"].astype(str) == str(codigo_escolhido)].copy()
+                            
+                            col_preco = "Preço Cotado" if "Preço Cotado" in df_filtrado.columns else "preco"
+                            df_filtrado[col_preco] = pd.to_numeric(df_filtrado[col_preco], errors="coerce").fillna(0.0)
+
+                            tabela = df_filtrado.pivot_table(index="Produto", columns="Fornecedor", values=col_preco, aggfunc="last").fillna(0.0)
 
                             def highlight_min(s):
-                                is_min = s == s.min()
-                                return ['background-color: #d1e7dd; font-weight: bold;' if v else '' for v in is_min]
+                                s_valid = s[s > 0]
+                                if not s_valid.empty:
+                                    min_val = s_valid.min()
+                                    return ['background-color: #2e7d32; color: white; font-weight: bold;' if v == min_val else '' for v in s]
+                                return ['' for _ in s]
 
                             st.write("Comparativo de Cotações (Menor preço em destaque)")
-                            st.dataframe(tabela.style.apply(highlight_min, axis=1), use_container_width=True)
+                            st.dataframe(tabela.style.apply(highlight_min, axis=1).format("R$ {:.2f}"), use_container_width=True)
 
                             vencedores = {}
                             for produto, linha in tabela.iterrows():
-                                fornecedor_min = linha.idxmin()
-                                st.write(f"Produto: {produto}")
+                                linha_valid = linha[linha > 0]
+                                fornecedor_min = linha_valid.idxmin() if not linha_valid.empty else None
+                                st.write(f"**Produto:** {produto}")
                                 for fornecedor, valor in linha.items():
                                     default = (fornecedor == fornecedor_min)
                                     vencedores[(produto, fornecedor)] = st.checkbox(f"{fornecedor} - R$ {float(valor or 0):.2f}", value=default, key=f"{produto}_{fornecedor}")
