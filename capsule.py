@@ -1312,7 +1312,12 @@ else:
 
         case "Contratos":
             st.header("Módulo de Contratos & Gestão de Projetos")
-            escolha_contratos = st.radio("Escolha uma opção:", ["Cadastro de Projeto", "Relatório Orçado vs. Realizado", "Emissão de Contratos"], horizontal=True)
+            escolha_contratos = st.radio(
+                "Escolha uma opção:", 
+                ["Cadastro de Projeto", "Relatório Orçado vs. Realizado", "Emissão de Contratos", "Consulta & Download PDF"], 
+                horizontal=True
+            )
+            
             match escolha_contratos:
                 case "Cadastro de Projeto":
                     with st.form("form_projeto"):
@@ -1351,7 +1356,10 @@ else:
                                 
                                 realizado = 0.0
                                 if not df_v.empty:
-                                    pedidos_obra = df_v[df_v["Produto"].astype(str).str.contains(nome_p, case=False, na=False) | df_v.get("NumeroPedido", "").astype(str).str.contains(num_p, case=False, na=False)] if "Produto" in df_v.columns else pd.DataFrame()
+                                    pedidos_obra = df_v[
+                                        df_v["Produto"].astype(str).str.contains(nome_p, case=False, na=False) | 
+                                        df_v.get("NumeroPedido", "").astype(str).str.contains(num_p, case=False, na=False)
+                                    ] if "Produto" in df_v.columns else pd.DataFrame()
                                     if not pedidos_obra.empty:
                                         realizado = (pedidos_obra["Quantidade"].astype(float) * pedidos_obra["Preço Cotado"].astype(float)).sum()
 
@@ -1400,7 +1408,7 @@ else:
                         empresa_contratante = st.selectbox("Empresa Contratante", [empresa_atual])
                         contrato_fornecedor = st.selectbox("Escolha o Fornecedor", forn_lista)
                         contrato_objeto = st.text_area("Objeto do Contrato")
-                        valor_contrato = st.number_input("Valor Contrato")
+                        valor_contrato = st.number_input("Valor Contrato (R$)", min_value=0.0, step=100.0)
 
                         if st.button("Salvar Contrato"):
                             supabase.table("contrato").insert({
@@ -1411,10 +1419,124 @@ else:
                                 "Projeto": str(contrato_projeto),
                                 "empresa_id": empresa_atual
                             }).execute()
-                            registrar_log(usuario_atual, empresa_atual, "Contrato Salvo", f"Projeto: {contrato_projeto}")
+                            registrar_log(usuario_atual, empresa_atual, "Contrato Salvo", f"Projeto: {contrato_projeto} | Fornecedor: {contrato_fornecedor}")
                             st.success("Contrato Salvo com Sucesso!")
                     except Exception as e:
                         st.error(f"Erro nos contratos: {e}")
+
+                case "Consulta & Download PDF":
+                    st.subheader("Consultar e Exportar Contratos em PDF")
+                    try:
+                        res_ct = supabase.table("contrato").select("*").eq("empresa_id", empresa_atual).execute()
+                        df_contratos = pd.DataFrame(res_ct.data if res_ct.data else [])
+
+                        if not df_contratos.empty:
+                            df_contratos["Label"] = "ID " + df_contratos["id"].astype(str) + " - " + df_contratos.get("Projeto", "N/D").astype(str) + " (" + df_contratos.get("Fornecedor", "N/D").astype(str) + ")"
+                            contrato_sel_label = st.selectbox("Selecione o Contrato", df_contratos["Label"].unique().tolist())
+
+                            id_contrato_sel = int(contrato_sel_label.split(" - ")[0].replace("ID ", "").strip())
+                            row_c = df_contratos[df_contratos["id"] == id_contrato_sel].iloc[0]
+
+                            st.write("---")
+                            col_info1, col_info2 = st.columns(2)
+                            with col_info1:
+                                st.write(f"**Empresa Contratante:** {row_c.get('Empresa Contratante', empresa_atual)}")
+                                st.write(f"**Fornecedor / Contratado:** {row_c.get('Fornecedor', 'N/D')}")
+                                st.write(f"**Projeto / Obra:** {row_c.get('Projeto', 'N/D')}")
+                            with col_info2:
+                                vl_c = float(row_c.get('Valor', 0.0) or 0.0)
+                                st.write(f"**Valor do Contrato:** R$ {vl_c:,.2f}")
+                                st.write(f"**ID do Registro:** {row_c.get('id')}")
+
+                            st.write(f"**Objeto do Contrato:**")
+                            st.info(row_c.get("Objeto", "Sem objeto cadastrado."))
+
+                            # Gerar PDF do Contrato
+                            buffer_contrato = io.BytesIO()
+                            doc_c = SimpleDocTemplate(buffer_contrato, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+                            elementos_c = []
+
+                            estilos_c = getSampleStyleSheet()
+                            estilo_normal_c = estilos_c["Normal"]
+                            estilo_normal_c.fontSize = 9
+                            estilo_normal_c.leading = 12
+
+                            if os.path.exists("capsuleSys.png"):
+                                img_rl_c = RLImage("capsuleSys.png", width=120, height=45)
+                                txt_header = Paragraph(
+                                    f"<b>{row_c.get('Empresa Contratante', empresa_atual)}</b><br/>"
+                                    f"<font size=12 color='#003366'><b>INSTRUMENTO PARTICULAR DE CONTRATO</b></font><br/>"
+                                    f"DATA DE EMISSÃO: {datetime.now().strftime('%d/%m/%Y')}", 
+                                    estilo_normal_c
+                                )
+                                tbl_head = Table([[txt_header, img_rl_c]], colWidths=[380, 150])
+                                tbl_head.setStyle(TableStyle([
+                                    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                                    ("ALIGN", (1,0), (1,0), "RIGHT")
+                                ]))
+                                elementos_c.append(tbl_head)
+                            else:
+                                txt_header = (
+                                    f"<b>{row_c.get('Empresa Contratante', empresa_atual)}</b><br/>"
+                                    f"<font size=12 color='#003366'><b>INSTRUMENTO PARTICULAR DE CONTRATO</b></font><br/>"
+                                    f"DATA DE EMISSÃO: {datetime.now().strftime('%d/%m/%Y')}"
+                                )
+                                elementos_c.append(Paragraph(txt_header, estilo_normal_c))
+
+                            elementos_c.append(Spacer(1, 15))
+
+                            dados_partes = [
+                                ["CONTRATANTE", str(row_c.get('Empresa Contratante', empresa_atual))],
+                                ["CONTRATADO / FORNECEDOR", str(row_c.get('Fornecedor', 'N/D'))],
+                                ["PROJETO / OBRA", str(row_c.get('Projeto', 'N/D'))],
+                                ["VALOR TOTAL", f"R$ {vl_c:,.2f}"]
+                            ]
+                            tbl_partes = Table(dados_partes, colWidths=[160, 340])
+                            tbl_partes.setStyle(TableStyle([
+                                ("BACKGROUND", (0,0), (0,-1), colors.HexColor("#f0f4f8")),
+                                ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+                                ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+                                ("FONTSIZE", (0,0), (-1,-1), 8),
+                            ]))
+                            elementos_c.append(tbl_partes)
+                            elementos_c.append(Spacer(1, 15))
+
+                            elementos_c.append(Paragraph("<b>OBJETO DO CONTRATO:</b>", estilo_normal_c))
+                            elementos_c.append(Spacer(1, 5))
+                            elementos_c.append(Paragraph(str(row_c.get("Objeto", "Sem objeto cadastrado.")).replace("\n", "<br/>"), estilo_normal_c))
+                            
+                            elementos_c.append(Spacer(1, 40))
+
+                            # Campo de Assinaturas
+                            dados_ass = [
+                                ["_________________________________________", "_________________________________________"],
+                                [f"CONTRATANTE: {row_c.get('Empresa Contratante', empresa_atual)}", f"CONTRATADO: {row_c.get('Fornecedor', 'N/D')}"]
+                            ]
+                            tbl_ass = Table(dados_ass, colWidths=[250, 250])
+                            tbl_ass.setStyle(TableStyle([
+                                ("ALIGN", (0,0), (-1,-1), "CENTER"),
+                                ("FONTSIZE", (0,0), (-1,-1), 8),
+                            ]))
+                            elementos_c.append(tbl_ass)
+
+                            doc_c.build(elementos_c)
+                            buffer_contrato.seek(0)
+
+                            st.download_button(
+                                label="Baixar Contrato (PDF)",
+                                data=buffer_contrato,
+                                file_name=f"contrato_{id_contrato_sel}_{row_c.get('Fornecedor', 'fornecedor')}.pdf",
+                                mime="application/pdf"
+                            )
+
+                            st.divider()
+                            st.subheader("Todos os Contratos Cadastrados")
+                            st.dataframe(df_contratos[["id", "Empresa Contratante", "Fornecedor", "Projeto", "Valor", "Objeto"]], use_container_width=True)
+
+                        else:
+                            st.info("Nenhum contrato cadastrado para consulta.")
+                    except Exception as e:
+                        st.error(f"Erro ao consultar contratos: {e}")
 
         case "Desconectar": 
             registrar_log(usuario_atual, empresa_atual, "Logout", "Sessão encerrada")
