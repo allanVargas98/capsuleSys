@@ -1051,13 +1051,14 @@ else:
                                 df_editado["Data Recebimento"] = str(data_recebimento)
                                 df_editado["empresa_id"] = empresa_atual
                                 
-                                # Garante conversao numerica exata do preco cotado
+                                # Garante conversao numerica exata do preco cotado antes de salvar
                                 df_editado["Preço Cotado"] = pd.to_numeric(df_editado["Preço Cotado"], errors="coerce").fillna(0.0)
                                 
                                 dados_inserir = df_editado.to_dict(orient="records")
                                 supabase.table("cotacoes").insert(dados_inserir).execute()
                                 registrar_log(usuario_atual, empresa_atual, "Cotação Registada", f"Fornecedor: {req_fornecedor}")
                                 st.success("Cotação salva com sucesso!")
+                                st.rerun()
                         else:
                             st.info("Sem requisições aprovadas disponíveis para cotação.")
                     except Exception as e:
