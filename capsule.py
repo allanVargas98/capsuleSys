@@ -1181,13 +1181,32 @@ else:
                             subtotal_geral = 0.0
 
                             for _, row in df_itens_pedido.iterrows():
-                                qtd = float(row.get("Quantidade", 1) or 1)
-                                vl_unit = float(row.get("Preço Cotado", 0.0) or 0.0)
+                                # Tratamento robusto para evitar nan na quantidade
+                                val_qtd = row.get("Quantidade", 1)
+                                if pd.isna(val_qtd) or str(val_qtd).lower() == "nan":
+                                    qtd = 1.0
+                                else:
+                                    try:
+                                        qtd = float(val_qtd)
+                                    except ValueError:
+                                        qtd = 1.0
+
+                                # Tratamento robusto para evitar nan no preço unitário
+                                val_unit = row.get("Preço Cotado", 0.0)
+                                if pd.isna(val_unit) or str(val_unit).lower() == "nan":
+                                    vl_unit = 0.0
+                                else:
+                                    try:
+                                        vl_unit = float(val_unit)
+                                    except ValueError:
+                                        vl_unit = 0.0
+
                                 subtotal = qtd * vl_unit
                                 subtotal_geral += subtotal
+                                
                                 dados_tabela.append([
                                     str(row.get("Produto", "")),
-                                    f"{qtd:,.2f}",
+                                    f"{qtd:,.0f}" if qtd.is_integer() else f"{qtd:,.2f}",
                                     f"R$ {vl_unit:,.2f}",
                                     f"R$ {subtotal:,.2f}"
                                 ])
