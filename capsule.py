@@ -111,7 +111,7 @@ def tela_login():
             st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
             st.session_state["is_master"] = True
             st.session_state["permissoes"] = [
-                "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", 
+                "Gráficos Gerenciais", "Aprovação Req.", "Cadastros", "Almox", "Compras", 
                 "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria"
             ]
             registrar_log("admin", "DigiEvo Business LTDA", "Login Sucesso", "Acesso Master via credencial primária")
@@ -147,7 +147,7 @@ def tela_login():
                     st.session_state["empresa_ativa"] = empresa_vinculada
                     st.session_state["is_master"] = (str(u_info_valido.get("Usuario")).lower() == "admin")
                     st.session_state["permissoes"] = [m.strip() for m in modulos_str.split(",")] if modulos_str else [
-                        "Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
+                        "Gráficos Gerenciais", "Aprovação Req.", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
                     ]
                     
                     registrar_log(st.session_state["usuario"], empresa_vinculada, "Login Sucesso", "Autenticação via base de dados")
@@ -182,7 +182,7 @@ else:
         empresa_atual = st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")
         st.sidebar.markdown(f"**Empresa:** `{empresa_atual}`")
 
-    todos_modulos = ["Gráficos Gerenciais", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
+    todos_modulos = ["Gráficos Gerenciais", "Aprovação Req.", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
     
     if is_master or usuario_atual.lower() == "admin":
@@ -199,6 +199,52 @@ else:
         case "Gráficos Gerenciais":
             st.header(f"Painel Executivo — {empresa_atual}")
             
+            # --- CONSOLIDADO DE SAVING NA TELA INICIAL ---
+            st.subheader("Performance de Suprimentos & Saving")
+            try:
+                res_v = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
+                res_c = supabase.table("cotacoes").select("*").eq("empresa_id", empresa_atual).execute()
+                
+                df_vencedores = pd.DataFrame(res_v.data if res_v.data else [])
+                df_cotacoes = pd.DataFrame(res_c.data if res_c.data else [])
+
+                if not df_vencedores.empty:
+                    df_vencedores["Preço Cotado"] = pd.to_numeric(df_vencedores["Preço Cotado"], errors="coerce").fillna(0.0)
+                    df_vencedores["Quantidade"] = pd.to_numeric(df_vencedores["Quantidade"], errors="coerce").fillna(1.0)
+                    df_vencedores["Total Pago"] = df_vencedores["Preço Cotado"] * df_vencedores["Quantidade"]
+                    df_vencedores["Preço Referencia"] = df_vencedores["Preço Cotado"]
+
+                    if not df_cotacoes.empty and "Produto" in df_cotacoes.columns:
+                        df_cotacoes["Preço Cotado"] = pd.to_numeric(df_cotacoes["Preço Cotado"], errors="coerce").fillna(0.0)
+                        map_max = df_cotacoes.groupby("Produto")["Preço Cotado"].max().to_dict()
+                        for idx, row in df_vencedores.iterrows():
+                            prod_nome = row["Produto"]
+                            if prod_nome in map_max and map_max[prod_nome] > row["Preço Cotado"]:
+                                df_vencedores.at[idx, "Preço Referencia"] = map_max[prod_nome]
+
+                    df_vencedores["Total Referencia"] = df_vencedores["Preço Referencia"] * df_vencedores["Quantidade"]
+                    df_vencedores["Saving Absoluto"] = df_vencedores["Total Referencia"] - df_vencedores["Total Pago"]
+
+                    tot_comprado = df_vencedores["Total Pago"].sum()
+                    tot_ref = df_vencedores["Total Referencia"].sum()
+                    tot_saving = df_vencedores["Saving Absoluto"].sum()
+                    pct_saving = (tot_saving / tot_ref * 100) if tot_ref > 0 else 0.0
+
+                    s_col1, s_col2, s_col3 = st.columns(3)
+                    s_col1.metric("Volume Comprado", f"R$ {tot_comprado:,.2f}")
+                    s_col2.metric("Valor Orçado / Maior Cotação", f"R$ {tot_ref:,.2f}")
+                    s_col3.metric("Saving Economizado", f"R$ {tot_saving:,.2f}", delta=f"{pct_saving:.2f}% de economia")
+                    
+                    st.caption("Comparativo de Gastos Realizados vs. Valor de Referência:")
+                    chart_saving = df_vencedores.groupby("NumeroPedido")[["Total Referencia", "Total Pago"]].sum()
+                    st.bar_chart(chart_saving)
+                else:
+                    st.info("Nenhum pedido processado para consolidar os indicadores de saving.")
+            except Exception as e:
+                st.error(f"Erro ao carregar indicadores de saving: {e}")
+
+            st.divider()
+
             st.subheader("Alertas de Estoque & Pendências")
             col_a1, col_a2 = st.columns(2)
             
@@ -262,6 +308,52 @@ else:
                         st.metric(label="Total Contas a Pagar (Abertas)", value="R$ 0,00")
                 except Exception:
                     st.metric(label="Total Contas a Pagar (Abertas)", value="R$ 0,00")
+
+        case "Aprovação Req.":
+            st.header("Central de Aprovação de Requisições")
+            st.caption("Workflow do Gestor/Diretor para análise e aprovação de demandas de compras.")
+            try:
+                res_reqs = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
+                df_reqs = pd.DataFrame(res_reqs.data if res_reqs.data else [])
+                
+                if not df_reqs.empty:
+                    if "Status" not in df_reqs.columns:
+                        df_reqs["Status"] = "Aprovado"
+                    df_reqs["Status"] = df_reqs["Status"].fillna("Aguardando Aprovação")
+
+                    pendentes = df_reqs[df_reqs["Status"] == "Aguardando Aprovação"]
+                    
+                    if not pendentes.empty:
+                        st.warning(f"Existem **{len(pendentes)} item(ns)** aguardando aprovação técnica/gestora:")
+                        for idx, row in pendentes.iterrows():
+                            with st.expander(f"Requisição Cod: {row.get('Codigo')} - Item: {row.get('Produto')} (Obra: {row.get('Nome Projeto', 'N/D')})"):
+                                st.write(f"**Quantidade:** {row.get('Quantidade')}")
+                                st.write(f"**Filial:** {row.get('Filial Requisitante')}")
+                                st.write(f"**Projeto:** {row.get('Nome Projeto')} (OS: {row.get('N° Projeto')})")
+                                
+                                col_ap1, col_ap2 = st.columns(2)
+                                with col_ap1:
+                                    if st.button("Aprovar Requisição", key=f"ap_{row.get('id')}"):
+                                        supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row.get("id")).execute()
+                                        registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
+                                        st.success("Requisição Aprovada!")
+                                        st.rerun()
+                                with col_ap2:
+                                    if st.button("Recusar / Rejeitar", key=f"rec_{row.get('id')}"):
+                                        supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row.get("id")).execute()
+                                        registrar_log(usuario_atual, empresa_atual, "Recusa Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
+                                        st.error("Requisição Rejeitada!")
+                                        st.rerun()
+                    else:
+                        st.success("Nenhuma requisição pendente de aprovação.")
+
+                    st.divider()
+                    st.subheader("Histórico Geral de Requisições")
+                    st.dataframe(df_reqs[["Codigo", "Produto", "Quantidade", "Nome Projeto", "Status"]], use_container_width=True)
+                else:
+                    st.info("Nenhuma requisição registrada.")
+            except Exception as e:
+                st.error(f"Erro ao carregar workflow de aprovação: {e}")
 
         case "Gerencial":
             st.header("Módulo Gerencial & Financeiro")
@@ -473,6 +565,7 @@ else:
                             
                             st.write("Módulos Permitidos para Acesso:")
                             p_graficos = st.checkbox("Gráficos Gerenciais", value=True)
+                            p_aprovacao = st.checkbox("Aprovação Req.", value=True)
                             p_cadastros = st.checkbox("Cadastros", value=True)
                             p_almox = st.checkbox("Almoxarifado", value=True)
                             p_compras = st.checkbox("Compras", value=True)
@@ -485,6 +578,7 @@ else:
                                 if usuario and email and senha:
                                     modulos_escolhidos = []
                                     if p_graficos: modulos_escolhidos.append("Gráficos Gerenciais")
+                                    if p_aprovacao: modulos_escolhidos.append("Aprovação Req.")
                                     if p_cadastros: modulos_escolhidos.append("Cadastros")
                                     if p_almox: modulos_escolhidos.append("Almox")
                                     if p_compras: modulos_escolhidos.append("Compras")
@@ -532,6 +626,7 @@ else:
                                         mods_atuais = str(u_obj.get("ModulosPermitidos", "")).split(",")
                                         st.write("Módulos Permitidos:")
                                         ed_p_graficos = st.checkbox("Gráficos Gerenciais", value=("Gráficos Gerenciais" in mods_atuais))
+                                        ed_p_aprovacao = st.checkbox("Aprovação Req.", value=("Aprovação Req." in mods_atuais))
                                         ed_p_cadastros = st.checkbox("Cadastros", value=("Cadastros" in mods_atuais))
                                         ed_p_almox = st.checkbox("Almoxarifado", value=("Almox" in mods_atuais))
                                         ed_p_compras = st.checkbox("Compras", value=("Compras" in mods_atuais))
@@ -543,6 +638,7 @@ else:
                                         if btn_atualizar:
                                             modulos_novos = []
                                             if ed_p_graficos: modulos_novos.append("Gráficos Gerenciais")
+                                            if ed_p_aprovacao: modulos_novos.append("Aprovação Req.")
                                             if ed_p_cadastros: modulos_novos.append("Cadastros")
                                             if ed_p_almox: modulos_novos.append("Almox")
                                             if ed_p_compras: modulos_novos.append("Compras")
@@ -940,53 +1036,8 @@ else:
 
         case "Compras":
             st.header("Módulo de Compras & Gestão de Suprimentos")
-            escolha_compras = st.radio("Escolha uma Opção:", ["Aprovação de Requisições", "Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
+            escolha_compras = st.radio("Escolha uma Opção:", ["Gestão de Compras", "Definição de Vencedores", "Pedidos de Compras"], horizontal=True)            
             match escolha_compras:
-                case "Aprovação de Requisições":
-                    st.subheader("Central de Aprovação de Requisições (Workflow do Gestor)")
-                    try:
-                        res_reqs = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
-                        df_reqs = pd.DataFrame(res_reqs.data if res_reqs.data else [])
-                        
-                        if not df_reqs.empty:
-                            if "Status" not in df_reqs.columns:
-                                df_reqs["Status"] = "Aprovado"
-                            df_reqs["Status"] = df_reqs["Status"].fillna("Aguardando Aprovação")
-
-                            pendentes = df_reqs[df_reqs["Status"] == "Aguardando Aprovação"]
-                            
-                            if not pendentes.empty:
-                                st.warning(f"Existem **{len(pendentes)} item(ns)** aguardando aprovação técnica/gestora:")
-                                for idx, row in pendentes.iterrows():
-                                    with st.expander(f"Requisição Cod: {row.get('Codigo')} - Item: {row.get('Produto')} (Obra: {row.get('Nome Projeto', 'N/D')})"):
-                                        st.write(f"**Quantidade:** {row.get('Quantidade')}")
-                                        st.write(f"**Filial:** {row.get('Filial Requisitante')}")
-                                        st.write(f"**Projeto:** {row.get('Nome Projeto')} (OS: {row.get('N° Projeto')})")
-                                        
-                                        col_ap1, col_ap2 = st.columns(2)
-                                        with col_ap1:
-                                            if st.button("Aprovar Requisição", key=f"ap_{row.get('id')}"):
-                                                supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row.get("id")).execute()
-                                                registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
-                                                st.success("Requisição Aprovada!")
-                                                st.rerun()
-                                        with col_ap2:
-                                            if st.button("Recusar / Rejeitar", key=f"rec_{row.get('id')}"):
-                                                supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row.get("id")).execute()
-                                                registrar_log(usuario_atual, empresa_atual, "Recusa Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
-                                                st.error("Requisição Rejeitada!")
-                                                st.rerun()
-                            else:
-                                st.success("Nenhuma requisição pendente de aprovação.")
-
-                            st.divider()
-                            st.subheader("Histórico Geral de Requisições")
-                            st.dataframe(df_reqs[["Codigo", "Produto", "Quantidade", "Nome Projeto", "Status"]], use_container_width=True)
-                        else:
-                            st.info("Nenhuma requisição registrada.")
-                    except Exception as e:
-                        st.error(f"Erro ao carregar workflow de aprovação: {e}")
-
                 case "Gestão de Compras":
                     try:
                         res_r = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
@@ -1051,7 +1102,6 @@ else:
                                 df_editado["Data Recebimento"] = str(data_recebimento)
                                 df_editado["empresa_id"] = empresa_atual
                                 
-                                # Garante conversao numerica exata do preco cotado antes de salvar
                                 df_editado["Preço Cotado"] = pd.to_numeric(df_editado["Preço Cotado"], errors="coerce").fillna(0.0)
                                 
                                 dados_inserir = df_editado.to_dict(orient="records")
@@ -1181,7 +1231,6 @@ else:
                             subtotal_geral = 0.0
 
                             for _, row in df_itens_pedido.iterrows():
-                                # Tratamento robusto para evitar nan na quantidade
                                 val_qtd = row.get("Quantidade", 1)
                                 if pd.isna(val_qtd) or str(val_qtd).lower() == "nan":
                                     qtd = 1.0
@@ -1191,7 +1240,6 @@ else:
                                     except ValueError:
                                         qtd = 1.0
 
-                                # Tratamento robusto para evitar nan no preço unitário
                                 val_unit = row.get("Preço Cotado", 0.0)
                                 if pd.isna(val_unit) or str(val_unit).lower() == "nan":
                                     vl_unit = 0.0
@@ -1248,10 +1296,6 @@ else:
             st.caption("O ATLAS IA analisa o banco de dados em tempo real para responder sobre estoques, cotações e saúde financeira da sua empresa.")
             
             def obter_contexto_completo_erp(empresa_alvo):
-                """
-                Consulta todas as tabelas principais do Supabase relativas à empresa ativa
-                para construir o contexto em tempo real do ATLAS IA.
-                """
                 dados_contexto = f"Empresa Ativa: {empresa_alvo}\n"
                 
                 tabelas_mapeadas = [
