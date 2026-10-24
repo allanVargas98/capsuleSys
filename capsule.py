@@ -2369,9 +2369,10 @@ else:
           "ATLAS IA — Central de Comando por Voz & Inteligência Estratégica"
       )
       st.caption(
-          "Converse por voz com o ATLAS IA. Ele analisa os dados do seu ERP em"
+          "Converse com o ATLAS IA. Ele analisa os dados do seu ERP em"
           " tempo real para responder sobre estoques, cotações e finanças."
       )
+
 
       def obter_contexto_completo_erp(empresa_alvo):
         dados_contexto = f"Empresa Ativa: {empresa_alvo}\n"
@@ -2411,10 +2412,11 @@ else:
 
         return dados_contexto
 
+
       if "lista_mensagem" not in st.session_state:
         st.session_state["lista_mensagem"] = []
 
-      # Componente da Esfera Laranja Holográfica e Reconhecimento por Voz
+      # Componente unificado com a esfera laranja, botão de escuta e sintetizador de voz integrado
       voz_html = """
             <!DOCTYPE html>
             <html lang="pt-BR">
@@ -2428,41 +2430,50 @@ else:
                         background: radial-gradient(circle, #100500 0%, #050508 100%);
                         border: 1px solid rgba(255, 102, 0, 0.3);
                         border-radius: 12px;
-                        padding: 20px;
+                        padding: 15px;
                         box-shadow: 0 0 20px rgba(255, 102, 0, 0.2);
                         font-family: 'Courier New', monospace;
                         color: #ff6600;
                     }
                     canvas {
-                        margin-bottom: 15px;
+                        margin-bottom: 10px;
+                    }
+                    .botoes-container {
+                        display: flex;
+                        gap: 10px;
                     }
                     .btn-jarvis {
                         background-color: #ff6600;
                         color: #000;
                         border: none;
-                        padding: 10px 20px;
+                        padding: 8px 16px;
                         font-weight: bold;
                         border-radius: 5px;
                         cursor: pointer;
                         box-shadow: 0 0 10px rgba(255, 102, 0, 0.5);
                         transition: 0.3s;
+                        font-size: 13px;
                     }
                     .btn-jarvis:hover {
                         background-color: #ffaa00;
                         box-shadow: 0 0 15px rgba(255, 170, 0, 0.8);
                     }
                     #status-voz {
-                        margin-top: 10px;
-                        font-size: 14px;
+                        margin-top: 8px;
+                        font-size: 13px;
                         color: #ffaa00;
+                        text-align: center;
                     }
                 </style>
             </head>
             <body>
                 <div class="jarvis-container">
-                    <canvas id="coreCanvas" width="200" height="200"></canvas>
-                    <button class="btn-jarvis" onclick="iniciarEscuta()">🎙️ Falar com o ATLAS IA</button>
-                    <div id="status-voz">Clique no botão e faça sua pergunta...</div>
+                    <canvas id="coreCanvas" width="160" height="160"></canvas>
+                    <div class="botoes-container">
+                        <button class="btn-jarvis" onclick="iniciarEscuta()">🎙️ Falar</button>
+                        <button class="btn-jarvis" onclick="pararFala()">⏹️ Parar Voz</button>
+                    </div>
+                    <div id="status-voz">Núcleo online. Pronto para comandos...</div>
                 </div>
 
                 <script>
@@ -2473,26 +2484,24 @@ else:
                     function desenharEsfera() {
                         ctx.clearRect(0, 0, canvas.width, canvas.height);
                         
-                        // Anel rotativo HUD
                         ctx.save();
-                        ctx.translate(100, 100);
+                        ctx.translate(80, 80);
                         ctx.rotate(angle);
                         ctx.strokeStyle = '#ff6600';
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.arc(0, 0, 80, 0, Math.PI * 1.5);
+                        ctx.arc(0, 0, 65, 0, Math.PI * 1.5);
                         ctx.stroke();
                         ctx.restore();
 
-                        // Núcleo de Energia Laranja
-                        let grad = ctx.createRadialGradient(100, 100, 5, 100, 100, 50);
+                        let grad = ctx.createRadialGradient(80, 80, 5, 80, 80, 40);
                         grad.addColorStop(0, '#ffffff');
                         grad.addColorStop(0.4, '#ffaa00');
                         grad.addColorStop(1, '#ff3300');
 
                         ctx.fillStyle = grad;
                         ctx.beginPath();
-                        ctx.arc(100, 100, 35 + Math.sin(angle * 5) * 3, 0, Math.PI * 2);
+                        ctx.arc(80, 80, 28 + Math.sin(angle * 5) * 3, 0, Math.PI * 2);
                         ctx.fill();
 
                         angle += 0.03;
@@ -2511,7 +2520,6 @@ else:
                         recognition.interimResults = false;
 
                         document.getElementById('status-voz').innerText = "Ouvindo... Fale agora!";
-                        
                         recognition.start();
 
                         recognition.onresult = function(event) {
@@ -2526,18 +2534,15 @@ else:
                             }
                         };
 
-                        recognition.onerror = function(event) {
-                            document.getElementById('status-voz').innerText = "Erro no reconhecimento. Tente novamente.";
+                        recognition.onerror = function() {
+                            document.getElementById('status-voz').innerText = "Erro ao capturar áudio. Tente novamente.";
                         };
                     }
 
-                    function falarResposta(texto) {
+                    function pararFala() {
                         if ('speechSynthesis' in window) {
                             window.speechSynthesis.cancel();
-                            const utterance = new SpeechSynthesisUtterance(texto);
-                            utterance.lang = 'pt-BR';
-                            utterance.rate = 1.1;
-                            window.speechSynthesis.speak(utterance);
+                            document.getElementById('status-voz').innerText = "Áudio interrompido.";
                         }
                     }
                 </script>
@@ -2545,10 +2550,34 @@ else:
             </html>
             """
 
-      components.html(voz_html, height=320)
+      components.html(voz_html, height=270)
 
-      for mensagem in st.session_state["lista_mensagem"]:
+      # Exibe as mensagens do chat e adiciona o botão individual de voz em cada resposta
+      for i, mensagem in enumerate(st.session_state["lista_mensagem"]):
         st.chat_message(mensagem["role"]).write(mensagem["content"])
+        if mensagem["role"] == "assistant":
+          if st.button(
+              f"🔊 Ouvir Resposta #{i // 2 + 1}", key=f"ouvir_msg_{i}"
+          ):
+            texto_limpo = (
+                mensagem["content"]
+                .replace('"', "")
+                .replace("\n", " ")
+                .replace("`", "")
+            )
+            components.html(
+                f"""
+                <script>
+                    if (parent && parent.window) {{
+                        const utterance = new SpeechSynthesisUtterance("{texto_limpo}");
+                        utterance.lang = 'pt-BR';
+                        utterance.rate = 1.1;
+                        window.speechSynthesis.speak(utterance);
+                    }}
+                </script>
+            """,
+                height=0,
+            )
 
       texto_user = st.chat_input(
           "Pergunte ao ATLAS (Por voz ou texto ex: Qual o estoque de produtos?)"
@@ -2570,7 +2599,7 @@ else:
 
             prompt_sistema = f"""
                         Você é o ATLAS IA, assistente inteligente corporativo e analista estratégico do ERP Capsule Sys.
-                        Analise os dados reais do banco de dados da empresa "{empresa_atual}" abaixo para responder de forma precisa, executiva e concisa (ideal para ser lida em voz alta para o gestor).
+                        Analise os dados reais do banco de dados da empresa "{empresa_atual}" abaixo para responder de forma precisa, executiva e concisa.
                         
                         Dados Atuais e Completos do Sistema (Supabase):
                         {dados_contexto}
@@ -2602,22 +2631,7 @@ else:
         st.session_state["lista_mensagem"].append(
             {"role": "assistant", "content": texto_resposta_ia}
         )
-
-        texto_voz_seguro = (
-            texto_resposta_ia.replace('"', '\\"')
-            .replace("\n", " ")
-            .replace("\r", "")
-        )
-        components.html(
-            f"""
-            <script>
-                if (parent && parent.window && parent.window.falarResposta) {{
-                    parent.window.falarResposta("{texto_voz_seguro}");
-                }}
-            </script>
-        """,
-            height=0,
-        )
+        st.rerun()
 
     case "Contratos":
       st.header("Módulo de Contratos & Gestão de Projetos")
