@@ -31,9 +31,6 @@ modelo = "models/gemini-3-flash-preview"
 # AUDITORIA E LOGS
 # ==========================================
 def registrar_log(usuario, empresa, acao, detalhe=""):
-    """
-    Regista acoes criticas do utilizador no banco de dados para fins de rastreabilidade.
-    """
     try:
         supabase.table("audit_logs").insert({
             "usuario": usuario,
@@ -104,7 +101,6 @@ def tela_login():
             st.warning("Por favor, preencha o usuário e a senha.")
             return
 
-        # Credencial Mestra de Recuperação / Admin Geral
         if u_limpo.lower() == "admin" and s_limpa == "1234":
             st.session_state["logado"] = True
             st.session_state["usuario"] = "admin"
@@ -199,8 +195,7 @@ else:
         case "Gráficos Gerenciais":
             st.header(f"Painel Executivo — {empresa_atual}")
             
-            # --- CONSOLIDADO DE SAVING NA TELA INICIAL ---
-            st.subheader("Performance de Suprimentos & Saving")
+            st.subheader("Performance de Suprimentos & Saving por Pedido")
             try:
                 res_v = supabase.table("vencedores").select("*").eq("empresa_id", empresa_atual).execute()
                 res_c = supabase.table("cotacoes").select("*").eq("empresa_id", empresa_atual).execute()
@@ -212,8 +207,8 @@ else:
                     df_vencedores["Preço Cotado"] = pd.to_numeric(df_vencedores["Preço Cotado"], errors="coerce").fillna(0.0)
                     df_vencedores["Quantidade"] = pd.to_numeric(df_vencedores["Quantidade"], errors="coerce").fillna(1.0)
                     df_vencedores["Total Pago"] = df_vencedores["Preço Cotado"] * df_vencedores["Quantidade"]
+                    
                     df_vencedores["Preço Referencia"] = df_vencedores["Preço Cotado"]
-
                     if not df_cotacoes.empty and "Produto" in df_cotacoes.columns:
                         df_cotacoes["Preço Cotado"] = pd.to_numeric(df_cotacoes["Preço Cotado"], errors="coerce").fillna(0.0)
                         map_max = df_cotacoes.groupby("Produto")["Preço Cotado"].max().to_dict()
@@ -225,21 +220,32 @@ else:
                     df_vencedores["Total Referencia"] = df_vencedores["Preço Referencia"] * df_vencedores["Quantidade"]
                     df_vencedores["Saving Absoluto"] = df_vencedores["Total Referencia"] - df_vencedores["Total Pago"]
 
-                    tot_comprado = df_vencedores["Total Pago"].sum()
-                    tot_ref = df_vencedores["Total Referencia"].sum()
-                    tot_saving = df_vencedores["Saving Absoluto"].sum()
-                    pct_saving = (tot_saving / tot_ref * 100) if tot_ref > 0 else 0.0
+                    df_pedido_saving = df_vencedores.groupby("NumeroPedido")[["Total Referencia", "Total Pago", "Saving Absoluto"]].sum().reset_index()
+                    df_pedido_saving["% Saving"] = (df_pedido_saving["Saving Absoluto"] / df_pedido_saving["Total Referencia"] * 100).fillna(0.0)
+
+                    tot_comprado_geral = df_pedido_saving["Total Pago"].sum()
+                    tot_ref_geral = df_pedido_saving["Total Referencia"].sum()
+                    tot_saving_geral = df_pedido_saving["Saving Absoluto"].sum()
+                    pct_saving_geral = (tot_saving_geral / tot_ref_geral * 100) if tot_ref_geral > 0 else 0.0
 
                     s_col1, s_col2, s_col3 = st.columns(3)
-                    s_col1.metric("Volume Comprado", f"R$ {tot_comprado:,.2f}")
-                    s_col2.metric("Valor Orçado / Maior Cotação", f"R$ {tot_ref:,.2f}")
-                    s_col3.metric("Saving Economizado", f"R$ {tot_saving:,.2f}", delta=f"{pct_saving:.2f}% de economia")
-                    
-                    st.caption("Comparativo de Gastos Realizados vs. Valor de Referência:")
-                    chart_saving = df_vencedores.groupby("NumeroPedido")[["Total Referencia", "Total Pago"]].sum()
-                    st.bar_chart(chart_saving)
+                    s_col1.metric("Total Comprado nos Pedidos", f"R$ {tot_comprado_geral:,.2f}")
+                    s_col2.metric("Valor de Referência (Mapa)", f"R$ {tot_ref_geral:,.2f}")
+                    s_col3.metric("Saving Total por Pedido", f"R$ {tot_saving_geral:,.2f}", delta=f"{pct_saving_geral:.2f}% de economia")
+
+                    st.markdown("---")
+                    st.subheader("Detalhamento do Saving por Pedido de Compra")
+                    st.dataframe(
+                        df_pedido_saving.style.format({
+                            "Total Referencia": "R$ {:,.2f}",
+                            "Total Pago": "R$ {:,.2f}",
+                            "Saving Absoluto": "R$ {:,.2f}",
+                            "% Saving": "{:.2f}%"
+                        }),
+                        use_container_width=True
+                    )
                 else:
-                    st.info("Nenhum pedido processado para consolidar os indicadores de saving.")
+                    st.info("Nenhum pedido processado para consolidar os indicadores de saving por pedido.")
             except Exception as e:
                 st.error(f"Erro ao carregar indicadores de saving: {e}")
 
@@ -305,13 +311,13 @@ else:
                         if not df_abertas.empty and "Fornecedor" in df_abertas.columns:
                             st.bar_chart(df_abertas.groupby("Fornecedor")["Valor"].sum())
                     else:
-                        st.metric(label="Total Contas a Pagar (Abertas)", value="R$ 0,00")
+                        st.metric(label="Total Contas a Pagar (Abertas)", value=f"R$ {total_contasp:,.2f}")
                 except Exception:
                     st.metric(label="Total Contas a Pagar (Abertas)", value="R$ 0,00")
 
         case "Aprovação Req.":
             st.header("Central de Aprovação de Requisições")
-            st.caption("Workflow do Gestor/Diretor para análise e aprovação de demandas de compras.")
+            st.caption("Workflow do Gestor/Diretor agrupado por Código de Requisição para análise e aprovação.")
             try:
                 res_reqs = supabase.table("requisicoes").select("*").eq("empresa_id", empresa_atual).execute()
                 df_reqs = pd.DataFrame(res_reqs.data if res_reqs.data else [])
@@ -321,29 +327,37 @@ else:
                         df_reqs["Status"] = "Aprovado"
                     df_reqs["Status"] = df_reqs["Status"].fillna("Aguardando Aprovação")
 
+                    # Filtrar apenas as pendentes para a seleção agrupada
                     pendentes = df_reqs[df_reqs["Status"] == "Aguardando Aprovação"]
                     
                     if not pendentes.empty:
-                        st.warning(f"Existem **{len(pendentes)} item(ns)** aguardando aprovação técnica/gestora:")
-                        for idx, row in pendentes.iterrows():
-                            with st.expander(f"Requisição Cod: {row.get('Codigo')} - Item: {row.get('Produto')} (Obra: {row.get('Nome Projeto', 'N/D')})"):
-                                st.write(f"**Quantidade:** {row.get('Quantidade')}")
-                                st.write(f"**Filial:** {row.get('Filial Requisitante')}")
-                                st.write(f"**Projeto:** {row.get('Nome Projeto')} (OS: {row.get('N° Projeto')})")
-                                
-                                col_ap1, col_ap2 = st.columns(2)
-                                with col_ap1:
-                                    if st.button("Aprovar Requisição", key=f"ap_{row.get('id')}"):
-                                        supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row.get("id")).execute()
-                                        registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
-                                        st.success("Requisição Aprovada!")
-                                        st.rerun()
-                                with col_ap2:
-                                    if st.button("Recusar / Rejeitar", key=f"rec_{row.get('id')}"):
-                                        supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row.get("id")).execute()
-                                        registrar_log(usuario_atual, empresa_atual, "Recusa Requisição", f"Cod: {row.get('Codigo')} - {row.get('Produto')}")
-                                        st.error("Requisição Rejeitada!")
-                                        st.rerun()
+                        pendentes["Codigo"] = pendentes["Codigo"].fillna(0).astype(str)
+                        pendentes["Nome Projeto"] = pendentes["Nome Projeto"].fillna("N/D").astype(str)
+                        pendentes["ReqLabel"] = "Requisição N° " + pendentes["Codigo"] + " - Obra: " + pendentes["Nome Projeto"]
+
+                        req_selecionada = st.selectbox("Selecione a Requisição para Análise", pendentes["ReqLabel"].unique().tolist())
+                        
+                        codigo_escolhido = str(req_selecionada).split(" - ")[0].replace("Requisição N° ", "").strip()
+                        df_itens_req = pendentes[pendentes["Codigo"] == codigo_escolhido]
+
+                        st.write(f"**Itens da Requisição N° {codigo_escolhido}:**")
+                        st.dataframe(df_itens_req[["Produto", "Quantidade", "Filial Requisitante", "Nome Projeto", "N° Projeto"]], use_container_width=True)
+
+                        col_ap1, col_ap2 = st.columns(2)
+                        with col_ap1:
+                            if st.button("Aprovar Requisição Completa", type="primary"):
+                                for _, row_item in df_itens_req.iterrows():
+                                    supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row_item.get("id")).execute()
+                                registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {codigo_escolhido}")
+                                st.success(f"Requisição N° {codigo_escolhido} aprovada com sucesso!")
+                                st.rerun()
+                        with col_ap2:
+                            if st.button("Rejeitar Requisição Completa"):
+                                for _, row_item in df_itens_req.iterrows():
+                                    supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row_item.get("id")).execute()
+                                registrar_log(usuario_atual, empresa_atual, "Rejeição Requisição", f"Cod: {codigo_escolhido}")
+                                st.error(f"Requisição N° {codigo_escolhido} rejeitada.")
+                                st.rerun()
                     else:
                         st.success("Nenhuma requisição pendente de aprovação.")
 
@@ -1515,7 +1529,6 @@ else:
                             st.write(f"**Objeto do Contrato:**")
                             st.info(row_c.get("Objeto", "Sem objeto cadastrado."))
 
-                            # Gerar PDF do Contrato
                             buffer_contrato = io.BytesIO()
                             doc_c = SimpleDocTemplate(buffer_contrato, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
                             elementos_c = []
@@ -1571,7 +1584,6 @@ else:
                             
                             elementos_c.append(Spacer(1, 40))
 
-                            # Campo de Assinaturas
                             dados_ass = [
                                 ["_________________________________________", "_________________________________________"],
                                 [f"CONTRATANTE: {row_c.get('Empresa Contratante', empresa_atual)}", f"CONTRATADO: {row_c.get('Fornecedor', 'N/D')}"]
