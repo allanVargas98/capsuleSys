@@ -107,7 +107,7 @@ def tela_login():
             st.session_state["empresa_ativa"] = "DigiEvo Business LTDA"
             st.session_state["is_master"] = True
             st.session_state["permissoes"] = [
-                "Gráficos Gerenciais", "Aprovação Req.", "Cadastros", "Almox", "Compras", 
+                "Gráficos Gerenciais", "Aprovacao Requisicao", "Cadastros", "Almox", "Compras", 
                 "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria"
             ]
             registrar_log("admin", "DigiEvo Business LTDA", "Login Sucesso", "Acesso Master via credencial primária")
@@ -143,7 +143,7 @@ def tela_login():
                     st.session_state["empresa_ativa"] = empresa_vinculada
                     st.session_state["is_master"] = (str(u_info_valido.get("Usuario")).lower() == "admin")
                     st.session_state["permissoes"] = [m.strip() for m in modulos_str.split(",")] if modulos_str else [
-                        "Gráficos Gerenciais", "Aprovação Req.", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
+                        "Gráficos Gerenciais", "Aprovacao Requisicao", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos"
                     ]
                     
                     registrar_log(st.session_state["usuario"], empresa_vinculada, "Login Sucesso", "Autenticação via base de dados")
@@ -178,7 +178,7 @@ else:
         empresa_atual = st.session_state.get("empresa_ativa", "DigiEvo Business LTDA")
         st.sidebar.markdown(f"**Empresa:** `{empresa_atual}`")
 
-    todos_modulos = ["Gráficos Gerenciais", "Aprovação Req.", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
+    todos_modulos = ["Gráficos Gerenciais", "Aprovacao Requisicao", "Cadastros", "Almox", "Compras", "Gerencial", "IA", "Contratos", "Gestão Empresas", "Auditoria", "Desconectar"]
     permissoes_usuario = st.session_state.get("permissoes", [])
     
     if is_master or usuario_atual.lower() == "admin":
@@ -315,7 +315,7 @@ else:
                 except Exception:
                     st.metric(label="Total Contas a Pagar (Abertas)", value="R$ 0,00")
 
-        case "Aprovação Req.":
+        case "Aprovacao Requisicao":
             st.header("Central de Aprovação de Requisições")
             st.caption("Workflow do Gestor/Diretor agrupado por Código de Requisição para análise e aprovação.")
             try:
@@ -348,14 +348,14 @@ else:
                             if st.button("Aprovar Requisição Completa", type="primary"):
                                 for _, row_item in df_itens_req.iterrows():
                                     supabase.table("requisicoes").update({"Status": "Aprovado"}).eq("id", row_item.get("id")).execute()
-                                registrar_log(usuario_atual, empresa_atual, "Aprovação Requisição", f"Cod: {codigo_escolhido}")
+                                registrar_log(usuario_atual, empresa_atual, "Aprovacao Requisicao", f"Cod: {codigo_escolhido}")
                                 st.success(f"Requisição N° {codigo_escolhido} aprovada com sucesso!")
                                 st.rerun()
                         with col_ap2:
                             if st.button("Rejeitar Requisição Completa"):
                                 for _, row_item in df_itens_req.iterrows():
                                     supabase.table("requisicoes").update({"Status": "Rejeitado"}).eq("id", row_item.get("id")).execute()
-                                registrar_log(usuario_atual, empresa_atual, "Rejeição Requisição", f"Cod: {codigo_escolhido}")
+                                registrar_log(usuario_atual, empresa_atual, "Rejeicao Requisicao", f"Cod: {codigo_escolhido}")
                                 st.error(f"Requisição N° {codigo_escolhido} rejeitada.")
                                 st.rerun()
                     else:
@@ -579,7 +579,7 @@ else:
                             
                             st.write("Módulos Permitidos para Acesso:")
                             p_graficos = st.checkbox("Gráficos Gerenciais", value=True)
-                            p_aprovacao = st.checkbox("Aprovação Req.", value=True)
+                            p_aprovacao = st.checkbox("Aprovacao Requisicao", value=True)
                             p_cadastros = st.checkbox("Cadastros", value=True)
                             p_almox = st.checkbox("Almoxarifado", value=True)
                             p_compras = st.checkbox("Compras", value=True)
@@ -592,7 +592,7 @@ else:
                                 if usuario and email and senha:
                                     modulos_escolhidos = []
                                     if p_graficos: modulos_escolhidos.append("Gráficos Gerenciais")
-                                    if p_aprovacao: modulos_escolhidos.append("Aprovação Req.")
+                                    if p_aprovacao: modulos_escolhidos.append("Aprovacao Requisicao")
                                     if p_cadastros: modulos_escolhidos.append("Cadastros")
                                     if p_almox: modulos_escolhidos.append("Almox")
                                     if p_compras: modulos_escolhidos.append("Compras")
@@ -640,7 +640,7 @@ else:
                                         mods_atuais = str(u_obj.get("ModulosPermitidos", "")).split(",")
                                         st.write("Módulos Permitidos:")
                                         ed_p_graficos = st.checkbox("Gráficos Gerenciais", value=("Gráficos Gerenciais" in mods_atuais))
-                                        ed_p_aprovacao = st.checkbox("Aprovação Req.", value=("Aprovação Req." in mods_atuais))
+                                        ed_p_aprovacao = st.checkbox("Aprovacao Requisicao", value=("Aprovacao Requisicao" in mods_atuais))
                                         ed_p_cadastros = st.checkbox("Cadastros", value=("Cadastros" in mods_atuais))
                                         ed_p_almox = st.checkbox("Almoxarifado", value=("Almox" in mods_atuais))
                                         ed_p_compras = st.checkbox("Compras", value=("Compras" in mods_atuais))
@@ -652,7 +652,7 @@ else:
                                         if btn_atualizar:
                                             modulos_novos = []
                                             if ed_p_graficos: modulos_novos.append("Gráficos Gerenciais")
-                                            if ed_p_aprovacao: modulos_novos.append("Aprovação Req.")
+                                            if ed_p_aprovacao: modulos_novos.append("Aprovacao Requisicao")
                                             if ed_p_cadastros: modulos_novos.append("Cadastros")
                                             if ed_p_almox: modulos_novos.append("Almox")
                                             if ed_p_compras: modulos_novos.append("Compras")
